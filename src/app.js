@@ -40,7 +40,7 @@ app.get("/api/students-test", (req, res) => {
     message: "Students test route working",
   });
 });
-app.use("/api/students", studentRoutes);
+app.use("/api/students-list", studentRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/fees", feeRoutes);
 app.use("/api/dashboard",dashboardRoutes);
