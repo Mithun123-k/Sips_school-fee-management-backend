@@ -34,8 +34,8 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
-app.use("/api/student-list", studentRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/student-list", studentRoutes);
 app.use("/api/fees", feeRoutes);
 app.use("/api/dashboard",dashboardRoutes);
 
