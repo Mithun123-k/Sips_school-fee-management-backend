@@ -8,22 +8,6 @@ const studentController = require("../controllers/student.controller");
 const validate = require("../middleware/validation.middleware");
 const { createStudentValidation, updateStudentValidation,} = require("../validators/student.validator");
 
-router.get(
-  "/test",
-  auth,
-  authorize("ADMIN"),
-  (req, res) => {
-    res.json({
-      success: true,
-      message: "Protected Route Working",
-      user: req.user,
-    });
-  }
-);
-
-
-
-
 
 
 // Create Student
@@ -42,6 +26,19 @@ router.get(
   auth,
   authorize("ADMIN", "RECEPTIONIST"),
   studentController.getAllStudents
+);
+
+router.get(
+  "/test",
+  auth,
+  authorize("ADMIN"),
+  (req, res) => {
+    res.json({
+      success: true,
+      message: "Protected Route Working",
+      user: req.user,
+    });
+  }
 );
 
 // Search Student
