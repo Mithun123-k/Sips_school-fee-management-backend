@@ -21,15 +21,8 @@ router.get(
   }
 );
 
-// Create Student
-router.post(
-  "/",
-  // auth,
-  // authorize("ADMIN", "RECEPTIONIST"),
-  createStudentValidation,
-  // validate,
-  studentController.createStudent
-);
+
+
 
 // Get All Students
 router.get(
@@ -38,6 +31,18 @@ router.get(
   authorize("ADMIN", "RECEPTIONIST"),
   studentController.getAllStudents
 );
+
+
+// Create Student
+router.post(
+  "/",
+  auth,
+  authorize("ADMIN", "RECEPTIONIST"),
+  createStudentValidation,
+  validate,
+  studentController.createStudent
+);
+
 
 // Search Student
 router.get(
