@@ -34,8 +34,15 @@ exports.createStudent = asyncHandler(
 exports.getAllStudents = asyncHandler(
   async (req, res) => {
 
+    console.log("🔥🔥🔥 getAllStudents reached");
+
+    console.log("USER:", req.user);
+
     const students =
       await studentService.getAllStudents();
+
+    console.log("🔥🔥🔥 students fetched successfully");
+    console.log("STUDENTS:", students);
 
     return sendResponse(
       res,

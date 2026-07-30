@@ -34,7 +34,6 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
-
 app.get("/api/students-test", (req, res) => {
   res.status(200).json({
     success: true,

@@ -21,11 +21,6 @@ router.get(
   }
 );
 
-
-
-
-
-
 // Create Student
 router.post(
   "/",
