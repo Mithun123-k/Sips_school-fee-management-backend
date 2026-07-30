@@ -25,11 +25,23 @@ router.get(
 
 
 // Get All Students
+// router.get(
+//   "/",
+//   auth,
+//   authorize("ADMIN", "RECEPTIONIST"),
+//   studentController.getAllStudents
+// );
+
 router.get(
   "/",
-  auth,
-  authorize("ADMIN", "RECEPTIONIST"),
-  studentController.getAllStudents
+  (req, res) => {
+    console.log("🔥🔥 /api/students ROOT REACHED");
+
+    return res.status(200).json({
+      success: true,
+      message: "Students root route working"
+    });
+  }
 );
 
 
