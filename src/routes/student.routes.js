@@ -44,8 +44,8 @@ router.get(
 // Search Student
 router.get(
   "/search/:search",
-  auth,
-  authorize("ADMIN", "RECEPTIONIST"),
+  // auth,
+  // authorize("ADMIN", "RECEPTIONIST"),
   studentController.searchStudent
 );
 
