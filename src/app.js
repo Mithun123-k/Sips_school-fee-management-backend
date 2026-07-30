@@ -10,6 +10,9 @@ const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
 const feeRoutes = require("./routes/fee.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
+const mongoose = require("mongoose");
+const Student = require("./models/Student"); // apne actual path ke according
+
 
 
 
@@ -32,23 +35,37 @@ app.get("/", (req, res) => {
     message: "School Fee Management API Running 🚀",
   });
 });
-app.get("/get-test", (req, res) => {
-  console.log("🔥 GET TEST HIT");
 
-  res.status(200).json({
-    success: true,
-    message: "GET is working"
-  });
+
+app.get("/get-test", async (req, res) => {
+  try {
+    console.log("🔥 GET TEST HIT");
+
+    console.log("MongoDB state:", mongoose.connection.readyState);
+
+    const students = await Student.find({}).limit(10);
+
+    console.log("🔥 MongoDB query successful");
+    console.log("🔥 Students:", students.length);
+
+    return res.status(200).json({
+      success: true,
+      message: "GET + MongoDB working",
+      count: students.length,
+      students,
+    });
+  } catch (error) {
+    console.error("❌ MongoDB GET ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
 });
 
-app.post("/post-test", (req, res) => {
-  console.log("🔥 POST TEST HIT");
 
-  res.status(200).json({
-    success: true,
-    message: "POST is working"
-  });
-});
+
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/student-list", studentRoutes);
