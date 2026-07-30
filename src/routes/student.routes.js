@@ -22,6 +22,10 @@ router.get(
 );
 
 
+
+
+
+
 // Create Student
 router.post(
   "/",
@@ -34,9 +38,9 @@ router.post(
 
 // Get All Students
 router.get(
-  "/all",
-  // auth,
-  // authorize("ADMIN", "RECEPTIONIST"),
+  "/",
+  auth,
+  authorize("ADMIN", "RECEPTIONIST"),
   studentController.getAllStudents
 );
 

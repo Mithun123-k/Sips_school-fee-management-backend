@@ -32,7 +32,23 @@ app.get("/", (req, res) => {
     message: "School Fee Management API Running 🚀",
   });
 });
+app.get("/get-test", (req, res) => {
+  console.log("🔥 GET TEST HIT");
 
+  res.status(200).json({
+    success: true,
+    message: "GET is working"
+  });
+});
+
+app.post("/post-test", (req, res) => {
+  console.log("🔥 POST TEST HIT");
+
+  res.status(200).json({
+    success: true,
+    message: "POST is working"
+  });
+});
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/student-list", studentRoutes);
