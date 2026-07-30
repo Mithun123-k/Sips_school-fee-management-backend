@@ -38,7 +38,7 @@ router.post(
 
 // Get All Students
 router.get(
-  "/",
+  "/all",
   auth,
   authorize("ADMIN", "RECEPTIONIST"),
   studentController.getAllStudents
