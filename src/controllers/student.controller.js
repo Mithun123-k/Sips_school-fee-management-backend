@@ -31,17 +31,22 @@ exports.createStudent = asyncHandler(
 // Get All Students
 // =======================================
 
-exports.getAllStudents = asyncHandler(async (req, res) => {
+exports.getAllStudents = asyncHandler(
+  async (req, res) => {
 
-  console.log("🔥🔥🔥 GET ALL STUDENTS CONTROLLER REACHED");
+    const students =
+      await studentService.getAllStudents();
 
-  return res.status(200).json({
-    success: true,
-    message: "Controller is working",
-    user: req.user
-  });
+    return sendResponse(
+      res,
+      200,
+      true,
+      "Students fetched successfully",
+      students
+    );
 
-});
+  }
+);
 
 // =======================================
 // Get Student By Id

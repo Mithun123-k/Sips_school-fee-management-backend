@@ -24,10 +24,10 @@ router.get(
 // Create Student
 router.post(
   "/",
-  auth,
-  authorize("ADMIN", "RECEPTIONIST"),
+  // auth,
+  // authorize("ADMIN", "RECEPTIONIST"),
   createStudentValidation,
-  validate,
+  // validate,
   studentController.createStudent
 );
 
