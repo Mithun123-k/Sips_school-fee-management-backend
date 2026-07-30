@@ -27,20 +27,20 @@ router.get(
 
 
 // Create Student
-router.post(
-  "/",
-  auth,
-  authorize("ADMIN", "RECEPTIONIST"),
-  createStudentValidation,
-  validate,
-  studentController.createStudent
-);
+// router.post(
+//   "/",
+//   auth,
+//   authorize("ADMIN", "RECEPTIONIST"),
+//   createStudentValidation,
+//   validate,
+//   studentController.createStudent
+// );
 
 // Get All Students
 router.get(
   "/all",
-  auth,
-  authorize("ADMIN", "RECEPTIONIST"),
+  // auth,
+  // authorize("ADMIN", "RECEPTIONIST"),
   studentController.getAllStudents
 );
 
