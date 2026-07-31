@@ -11,7 +11,7 @@ const controller =
 require("../controllers/user.controller");
 
 router.post(
-  "/receptionist",
+  "/",
   auth,
   authorize("ADMIN"),
   controller.createReceptionist
