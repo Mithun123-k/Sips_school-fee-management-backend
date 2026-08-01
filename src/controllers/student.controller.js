@@ -9,7 +9,6 @@ const studentService = require("../services/student.service");
 
 exports.createStudent = asyncHandler(
   async (req, res) => {
-
     const student =
       await studentService.createStudent(
         req.body,
@@ -23,7 +22,6 @@ exports.createStudent = asyncHandler(
       "Student created successfully",
       student
     );
-
   }
 );
 
@@ -33,7 +31,6 @@ exports.createStudent = asyncHandler(
 
 exports.getAllStudents = asyncHandler(
   async (req, res) => {
-
     const students =
       await studentService.getAllStudents();
 
@@ -44,7 +41,6 @@ exports.getAllStudents = asyncHandler(
       "Students fetched successfully",
       students
     );
-
   }
 );
 
@@ -54,7 +50,6 @@ exports.getAllStudents = asyncHandler(
 
 exports.getStudentById = asyncHandler(
   async (req, res) => {
-
     const student =
       await studentService.getStudentById(
         req.params.id
@@ -67,7 +62,6 @@ exports.getStudentById = asyncHandler(
       "Student fetched successfully",
       student
     );
-
   }
 );
 
@@ -77,11 +71,19 @@ exports.getStudentById = asyncHandler(
 
 exports.searchStudent = asyncHandler(
   async (req, res) => {
-
     const student =
       await studentService.searchStudent(
         req.params.search
       );
+
+    if (!student) {
+      return sendResponse(
+        res,
+        404,
+        false,
+        "Student not found"
+      );
+    }
 
     return sendResponse(
       res,
@@ -90,7 +92,6 @@ exports.searchStudent = asyncHandler(
       "Student found",
       student
     );
-
   }
 );
 
@@ -100,7 +101,6 @@ exports.searchStudent = asyncHandler(
 
 exports.updateStudent = asyncHandler(
   async (req, res) => {
-
     const student =
       await studentService.updateStudent(
         req.params.id,
@@ -115,7 +115,6 @@ exports.updateStudent = asyncHandler(
       "Student updated successfully",
       student
     );
-
   }
 );
 
@@ -125,7 +124,6 @@ exports.updateStudent = asyncHandler(
 
 exports.deleteStudent = asyncHandler(
   async (req, res) => {
-
     await studentService.deleteStudent(
       req.params.id
     );
@@ -136,6 +134,5 @@ exports.deleteStudent = asyncHandler(
       true,
       "Student deleted successfully"
     );
-
   }
 );

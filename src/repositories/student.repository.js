@@ -1,8 +1,16 @@
 const Student = require("../models/Student");
 
+// ============================
+// Create Student
+// ============================
+
 const createStudent = async (data) => {
   return await Student.create(data);
 };
+
+// ============================
+// Find By Mobile
+// ============================
 
 const findByMobile = async (mobile) => {
   return await Student.findOne({
@@ -11,12 +19,20 @@ const findByMobile = async (mobile) => {
   });
 };
 
+// ============================
+// Find By Student ID
+// ============================
+
 const findByStudentId = async (studentId) => {
   return await Student.findOne({
     studentId,
     isDeleted: false,
   });
 };
+
+// ============================
+// Get All Students
+// ============================
 
 const getAllStudents = async () => {
   return await Student.find({
@@ -26,6 +42,10 @@ const getAllStudents = async () => {
   });
 };
 
+// ============================
+// Get Student By ID
+// ============================
+
 const getStudentById = async (id) => {
   return await Student.findOne({
     _id: id,
@@ -33,9 +53,16 @@ const getStudentById = async (id) => {
   });
 };
 
+// ============================
+// Update Student
+// ============================
+
 const updateStudent = async (id, data) => {
-  return await Student.findByIdAndUpdate(
-    id,
+  return await Student.findOneAndUpdate(
+    {
+      _id: id,
+      isDeleted: false,
+    },
     data,
     {
       new: true,
@@ -44,9 +71,16 @@ const updateStudent = async (id, data) => {
   );
 };
 
+// ============================
+// Delete Student
+// ============================
+
 const deleteStudent = async (id) => {
-  return await Student.findByIdAndUpdate(
-    id,
+  return await Student.findOneAndUpdate(
+    {
+      _id: id,
+      isDeleted: false,
+    },
     {
       isDeleted: true,
     },
@@ -56,8 +90,11 @@ const deleteStudent = async (id) => {
   );
 };
 
-const searchStudent = async (search) => {
+// ============================
+// Search Student
+// ============================
 
+const searchStudent = async (search) => {
   return await Student.findOne({
     isDeleted: false,
     $or: [
@@ -69,26 +106,31 @@ const searchStudent = async (search) => {
       },
     ],
   });
-
 };
+
+// ============================
+// Update Fee
+// ============================
 
 const updateFee = async (
   id,
   paidFee,
   dueFee
 ) => {
-
-  return await Student.findByIdAndUpdate(
-    id,
+  return await Student.findOneAndUpdate(
+    {
+      _id: id,
+      isDeleted: false,
+    },
     {
       paidFee,
       dueFee,
     },
     {
       new: true,
+      runValidators: true,
     }
   );
-
 };
 
 module.exports = {
@@ -102,4 +144,3 @@ module.exports = {
   searchStudent,
   updateFee,
 };
-

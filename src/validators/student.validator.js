@@ -1,7 +1,10 @@
 const { body } = require("express-validator");
 
-exports.createStudentValidation = [
+// =======================================
+// Create Student Validation
+// =======================================
 
+exports.createStudentValidation = [
   body("name")
     .trim()
     .notEmpty()
@@ -27,6 +30,30 @@ exports.createStudentValidation = [
     .notEmpty()
     .withMessage("Class is required"),
 
+  // ============================
+  // Monthly Fee
+  // ============================
+
+  body("monthlyFee")
+    .notEmpty()
+    .withMessage("Monthly fee is required")
+    .isNumeric()
+    .withMessage("Monthly fee must be numeric"),
+
+  // ============================
+  // Opening Due
+  // Old student previous pending fee
+  // ============================
+
+  body("openingDue")
+    .optional()
+    .isNumeric()
+    .withMessage("Opening due must be numeric"),
+
+  // ============================
+  // Total Fee
+  // ============================
+
   body("totalFee")
     .notEmpty()
     .withMessage("Total fee is required")
@@ -34,8 +61,11 @@ exports.createStudentValidation = [
     .withMessage("Total fee must be numeric"),
 ];
 
-exports.updateStudentValidation = [
+// =======================================
+// Update Student Validation
+// =======================================
 
+exports.updateStudentValidation = [
   body("name")
     .optional()
     .trim(),
@@ -46,9 +76,26 @@ exports.updateStudentValidation = [
 
   body("mobile")
     .optional()
-    .isLength({ min: 10, max: 10 }),
+    .isLength({ min: 10, max: 10 })
+    .withMessage("Mobile number must be 10 digits"),
+
+  body("monthlyFee")
+    .optional()
+    .isNumeric()
+    .withMessage("Monthly fee must be numeric"),
+
+  body("openingDue")
+    .optional()
+    .isNumeric()
+    .withMessage("Opening due must be numeric"),
 
   body("totalFee")
     .optional()
-    .isNumeric(),
+    .isNumeric()
+    .withMessage("Total fee must be numeric"),
+
+  body("paidFee")
+    .optional()
+    .isNumeric()
+    .withMessage("Paid fee must be numeric"),
 ];
