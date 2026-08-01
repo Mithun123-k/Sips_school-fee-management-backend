@@ -20,8 +20,15 @@ const getReceipt = async (id) => {
     .populate("collectedBy", "name");
 };
 
+const findByTransactionId = async (transactionId) => {
+  return await Fee.findOne({
+    transactionId,
+  });
+};
+
 module.exports = {
   createFee,
   getFeeHistory,
   getReceipt,
+  findByTransactionId,
 };

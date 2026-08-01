@@ -10,33 +10,67 @@ const authorize = require("../middleware/role.middleware");
 const validate = require("../middleware/validation.middleware");
 
 const {
-    collectFeeValidation,
+  collectFeeValidation,
+  onlineQRValidation,
 } = require("../validators/fee.validator");
 
+// ====================================
 // Collect Fee
+// ====================================
+
 router.post(
-    "/collect",
-    auth,
-    authorize("ADMIN", "RECEPTIONIST"),
-    collectFeeValidation,
-    validate,
-    feeController.collectFee
+  "/collect",
+  auth,
+  authorize("ADMIN", "RECEPTIONIST"),
+  collectFeeValidation,
+  validate,
+  feeController.collectFee
 );
 
+// ====================================
+// Online QR Create
+// ====================================
+
+router.post(
+  "/online/create-qr",
+  auth,
+  authorize("ADMIN", "RECEPTIONIST"),
+  onlineQRValidation,
+  validate,
+  feeController.createOnlineQR
+);
+
+// ====================================
+// Online Payment Status
+// ====================================
+
+router.get(
+  "/online/status/:qrId",
+  auth,
+  authorize("ADMIN", "RECEPTIONIST"),
+  feeController.checkOnlinePayment
+);
+
+// ====================================
 // Fee History
+// ====================================
+
 router.get(
-    "/history/:studentId",
-    auth,
-    authorize("ADMIN", "RECEPTIONIST"),
-    feeController.getFeeHistory
+  "/history/:studentId",
+  auth,
+  authorize("ADMIN", "RECEPTIONIST"),
+  feeController.getFeeHistory
 );
 
-// Receipt Details
+// ====================================
+// Receipt
+// ====================================
+
 router.get(
-    "/receipt/:id",
-    auth,
-    authorize("ADMIN", "RECEPTIONIST"),
-    feeController.getReceipt
+  "/receipt/:id",
+  auth,
+  authorize("ADMIN", "RECEPTIONIST"),
+  feeController.getReceipt
 );
 
 module.exports = router;

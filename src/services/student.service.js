@@ -241,7 +241,16 @@ const createStudent = async (
   const dueFee =
     calculateDueFee(student);
 
-  // Only update returned document
+  // ===================================================
+  // Update Due Fee In MongoDB
+  // ===================================================
+
+  await studentRepository.updateDueFee(
+    student._id,
+    dueFee
+  );
+
+  // Update API response
   student.dueFee = dueFee;
 
   return student;
@@ -255,12 +264,27 @@ const getAllStudents = async () => {
   const students =
     await studentRepository.getAllStudents();
 
-  return students.map((student) => {
-    student.dueFee =
+  for (const student of students) {
+    // Calculate latest due
+    const dueFee =
       calculateDueFee(student);
 
-    return student;
-  });
+    // Update MongoDB
+    if (
+      Number(student.dueFee) !==
+      Number(dueFee)
+    ) {
+      await studentRepository.updateDueFee(
+        student._id,
+        dueFee
+      );
+    }
+
+    // Update API response
+    student.dueFee = dueFee;
+  }
+
+  return students;
 };
 
 // =====================================================
@@ -279,8 +303,23 @@ const getStudentById = async (id) => {
     );
   }
 
-  student.dueFee =
+  // Calculate latest due
+  const dueFee =
     calculateDueFee(student);
+
+  // Update MongoDB
+  if (
+    Number(student.dueFee) !==
+    Number(dueFee)
+  ) {
+    await studentRepository.updateDueFee(
+      student._id,
+      dueFee
+    );
+  }
+
+  // Update API response
+  student.dueFee = dueFee;
 
   return student;
 };
@@ -299,8 +338,23 @@ const searchStudent = async (search) => {
     return null;
   }
 
-  student.dueFee =
+  // Calculate latest due
+  const dueFee =
     calculateDueFee(student);
+
+  // Update MongoDB
+  if (
+    Number(student.dueFee) !==
+    Number(dueFee)
+  ) {
+    await studentRepository.updateDueFee(
+      student._id,
+      dueFee
+    );
+  }
+
+  // Update API response
+  student.dueFee = dueFee;
 
   return student;
 };
@@ -314,8 +368,6 @@ const updateStudent = async (
   body,
   userId
 ) => {
-  body.updatedBy = userId;
-
   // ===================================================
   // Get Existing Student
   // ===================================================
@@ -330,6 +382,12 @@ const updateStudent = async (
       "Student not found"
     );
   }
+
+  // ===================================================
+  // Updated By
+  // ===================================================
+
+  body.updatedBy = userId;
 
   // ===================================================
   // Admission Date Changed
@@ -365,8 +423,20 @@ const updateStudent = async (
   // Calculate Latest Due
   // ===================================================
 
-  student.dueFee =
+  const dueFee =
     calculateDueFee(student);
+
+  // ===================================================
+  // Update Due Fee In MongoDB
+  // ===================================================
+
+  await studentRepository.updateDueFee(
+    student._id,
+    dueFee
+  );
+
+  // Update API response
+  student.dueFee = dueFee;
 
   return student;
 };

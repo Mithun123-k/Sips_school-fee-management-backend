@@ -63,7 +63,9 @@ const updateStudent = async (id, data) => {
       _id: id,
       isDeleted: false,
     },
-    data,
+    {
+      $set: data,
+    },
     {
       new: true,
       runValidators: true,
@@ -82,10 +84,13 @@ const deleteStudent = async (id) => {
       isDeleted: false,
     },
     {
-      isDeleted: true,
+      $set: {
+        isDeleted: true,
+      },
     },
     {
       new: true,
+      runValidators: true,
     }
   );
 };
@@ -123,8 +128,10 @@ const updateFee = async (
       isDeleted: false,
     },
     {
-      paidFee,
-      dueFee,
+      $set: {
+        paidFee: Number(paidFee),
+        dueFee: Number(dueFee),
+      },
     },
     {
       new: true,
@@ -132,6 +139,35 @@ const updateFee = async (
     }
   );
 };
+
+// ============================
+// Update Due Fee
+// ============================
+
+const updateDueFee = async (
+  id,
+  dueFee
+) => {
+  return await Student.findOneAndUpdate(
+    {
+      _id: id,
+      isDeleted: false,
+    },
+    {
+      $set: {
+        dueFee: Number(dueFee),
+      },
+    },
+    {
+      new: true,
+      runValidators: true,
+    }
+  );
+};
+
+// ============================
+// Export
+// ============================
 
 module.exports = {
   createStudent,
@@ -143,4 +179,5 @@ module.exports = {
   deleteStudent,
   searchStudent,
   updateFee,
+  updateDueFee,
 };
