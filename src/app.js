@@ -10,6 +10,7 @@ const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
 const feeRoutes = require("./routes/fee.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
+const feeStructureRoutes = require("./routes/feeStructure.routes");
 
 
 
@@ -38,6 +39,7 @@ app.use("/api/students", studentRoutes);
 app.use("/api/receptionist", userRoutes);
 app.use("/api/fees", feeRoutes);
 app.use("/api/dashboard",dashboardRoutes);
+app.use("/api/fee-structures", feeStructureRoutes);
 
 // Error middleware ALWAYS LAST
 app.use(errorHandler);

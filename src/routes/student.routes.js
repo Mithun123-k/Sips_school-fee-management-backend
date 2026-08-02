@@ -2,97 +2,106 @@ const express = require("express");
 
 const router = express.Router();
 
-const auth = require("../middleware/auth.middleware");
-const authorize = require("../middleware/role.middleware");
+const studentController =
+  require("../controllers/student.controller");
 
-const studentController = require("../controllers/student.controller");
+const auth =
+  require("../middleware/auth.middleware");
 
-const validate = require("../middleware/validation.middleware");
+const authorize =
+  require("../middleware/role.middleware");
+
+const validate =
+  require("../middleware/validation.middleware");
 
 const {
   createStudentValidation,
   updateStudentValidation,
 } = require("../validators/student.validator");
 
-// =======================================
-// Create Student
-// =======================================
+// =====================================================
+// PUBLIC
+// Search Student For Fee Payment
+// =====================================================
+//
+// Search by:
+// - Student ID
+// - Mobile Number
+//
+// Login is NOT required.
+//
+// Example:
+// GET /api/students/search?search=STU1001
+//
+// =====================================================
+
+router.get(
+  "/search",
+  studentController.searchStudent
+);
+
+// =====================================================
+// CREATE STUDENT
+// ADMIN ONLY
+// =====================================================
 
 router.post(
   "/",
   auth,
-  authorize("ADMIN", "RECEPTIONIST"),
+  authorize("ADMIN"),
   createStudentValidation,
   validate,
   studentController.createStudent
 );
 
-// =======================================
-// Get All Students
-// =======================================
+// =====================================================
+// GET ALL STUDENTS
+// ADMIN / RECEPTIONIST
+// =====================================================
 
 router.get(
   "/",
   auth,
-  authorize("ADMIN", "RECEPTIONIST"),
+  authorize(
+    "ADMIN",
+    "RECEPTIONIST"
+  ),
   studentController.getAllStudents
 );
 
-// =======================================
-// Test Protected Route
-// =======================================
-
-router.get(
-  "/test",
-  auth,
-  authorize("ADMIN"),
-  (req, res) => {
-    res.json({
-      success: true,
-      message: "Protected Route Working",
-      user: req.user,
-    });
-  }
-);
-
-// =======================================
-// Search Student
-// =======================================
-
-router.get(
-  "/search/:search",
-  // auth,
-  // authorize("ADMIN", "RECEPTIONIST"),
-  studentController.searchStudent
-);
-
-// =======================================
-// Get Student By ID
-// =======================================
+// =====================================================
+// GET STUDENT BY MONGO ID
+// ADMIN / RECEPTIONIST
+// =====================================================
 
 router.get(
   "/:id",
   auth,
-  authorize("ADMIN", "RECEPTIONIST"),
+  authorize(
+    "ADMIN",
+    "RECEPTIONIST"
+  ),
   studentController.getStudentById
 );
 
-// =======================================
-// Update Student
-// =======================================
+// =====================================================
+// UPDATE STUDENT
+// ADMIN ONLY
+// =====================================================
 
 router.put(
   "/:id",
   auth,
-  authorize("ADMIN", "RECEPTIONIST"),
+  authorize("ADMIN"),
   updateStudentValidation,
   validate,
   studentController.updateStudent
 );
 
-// =======================================
-// Delete Student
-// =======================================
+// =====================================================
+// DELETE STUDENT
+// ADMIN ONLY
+// =====================================================
 
 router.delete(
   "/:id",

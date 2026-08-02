@@ -1,11 +1,15 @@
 const asyncHandler = require("../helpers/asyncHandler");
-const sendResponse = require("../utils/response");
 
-const studentService = require("../services/student.service");
+const sendResponse =
+  require("../utils/response");
 
-// =======================================
+const studentService =
+  require("../services/student.service");
+
+// =====================================================
 // Create Student
-// =======================================
+// ADMIN ONLY
+// =====================================================
 
 exports.createStudent = asyncHandler(
   async (req, res) => {
@@ -25,114 +29,127 @@ exports.createStudent = asyncHandler(
   }
 );
 
-// =======================================
+// =====================================================
 // Get All Students
-// =======================================
+// ADMIN / RECEPTIONIST
+// =====================================================
 
-exports.getAllStudents = asyncHandler(
-  async (req, res) => {
-    const students =
-      await studentService.getAllStudents();
+exports.getAllStudents =
+  asyncHandler(
+    async (req, res) => {
+      const students =
+        await studentService.getAllStudents();
 
-    return sendResponse(
-      res,
-      200,
-      true,
-      "Students fetched successfully",
-      students
-    );
-  }
-);
-
-// =======================================
-// Get Student By Id
-// =======================================
-
-exports.getStudentById = asyncHandler(
-  async (req, res) => {
-    const student =
-      await studentService.getStudentById(
-        req.params.id
-      );
-
-    return sendResponse(
-      res,
-      200,
-      true,
-      "Student fetched successfully",
-      student
-    );
-  }
-);
-
-// =======================================
-// Search Student
-// =======================================
-
-exports.searchStudent = asyncHandler(
-  async (req, res) => {
-    const student =
-      await studentService.searchStudent(
-        req.params.search
-      );
-
-    if (!student) {
       return sendResponse(
         res,
-        404,
-        false,
-        "Student not found"
+        200,
+        true,
+        "Students fetched successfully",
+        students
       );
     }
+  );
 
-    return sendResponse(
-      res,
-      200,
-      true,
-      "Student found",
-      student
-    );
-  }
-);
+// =====================================================
+// Get Student By ID
+// ADMIN / RECEPTIONIST
+// =====================================================
 
-// =======================================
-// Update Student
-// =======================================
+exports.getStudentById =
+  asyncHandler(
+    async (req, res) => {
+      const student =
+        await studentService.getStudentById(
+          req.params.id
+        );
 
-exports.updateStudent = asyncHandler(
-  async (req, res) => {
-    const student =
-      await studentService.updateStudent(
-        req.params.id,
-        req.body,
-        req.user.id
+      return sendResponse(
+        res,
+        200,
+        true,
+        "Student fetched successfully",
+        student
       );
+    }
+  );
 
-    return sendResponse(
-      res,
-      200,
-      true,
-      "Student updated successfully",
-      student
-    );
-  }
-);
+// =====================================================
+// Update Student
+// ADMIN ONLY
+// =====================================================
 
-// =======================================
+exports.updateStudent =
+  asyncHandler(
+    async (req, res) => {
+      const student =
+        await studentService.updateStudent(
+          req.params.id,
+          req.body,
+          req.user.id
+        );
+
+      return sendResponse(
+        res,
+        200,
+        true,
+        "Student updated successfully",
+        student
+      );
+    }
+  );
+
+// =====================================================
 // Delete Student
-// =======================================
+// ADMIN ONLY
+// =====================================================
 
-exports.deleteStudent = asyncHandler(
-  async (req, res) => {
-    await studentService.deleteStudent(
-      req.params.id
-    );
+exports.deleteStudent =
+  asyncHandler(
+    async (req, res) => {
+      const student =
+        await studentService.deleteStudent(
+          req.params.id,
+          req.user.id
+        );
 
-    return sendResponse(
-      res,
-      200,
-      true,
-      "Student deleted successfully"
-    );
-  }
-);
+      return sendResponse(
+        res,
+        200,
+        true,
+        "Student deleted successfully",
+        student
+      );
+    }
+  );
+
+// =====================================================
+// Search Student For Payment
+// PUBLIC
+// =====================================================
+//
+// Student searches using:
+// - Student ID
+// - Mobile Number
+//
+// Only minimum required information should
+// be returned by service.
+//
+// =====================================================
+
+exports.searchStudent =
+  asyncHandler(
+    async (req, res) => {
+      const student =
+        await studentService.searchStudent(
+          req.query.search
+        );
+
+      return sendResponse(
+        res,
+        200,
+        true,
+        "Student found successfully",
+        student
+      );
+    }
+  );

@@ -1,64 +1,164 @@
 const mongoose = require("mongoose");
 
-const pendingOnlinePaymentSchema = new mongoose.Schema(
-  {
-    qrId: {
-      type: String,
-      required: true,
-      unique: true,
-      index: true,
-    },
+// =====================================================
+// Allowed Fee Heads
+// =====================================================
 
-    student: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Student",
-      required: true,
-    },
+const ALLOWED_FEE_HEADS = [
+  "ADMISSION",
+  "MONTHLY",
+  "EXAM",
+  "SPORT",
+  "COMPUTER",
+  "FUNCTION",
+  "SMART_CLASS",
+  "OTHER",
+];
 
-    studentId: {
-      type: String,
-      required: true,
-    },
+// =====================================================
+// Pending Online Payment Schema
+// =====================================================
 
-    amount: {
-      type: Number,
-      required: true,
-    },
+const pendingOnlinePaymentSchema =
+  new mongoose.Schema(
+    {
+      // ================================================
+      // Razorpay QR ID
+      // ================================================
 
-    paymentId: {
-      type: String,
-      default: "",
-      index: true,
-    },
+      qrId: {
+        type: String,
+        required: true,
+        unique: true,
+        index: true,
+        trim: true,
+      },
 
-    status: {
-      type: String,
-      enum: ["PENDING", "SUCCESS", "FAILED"],
-      default: "PENDING",
-    },
+      // ================================================
+      // Student Reference
+      // ================================================
 
-    qrImageUrl: {
-      type: String,
-      default: "",
-    },
+      student: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Student",
+        required: true,
+      },
 
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
+      // ================================================
+      // Student ID
+      // ================================================
 
-    completedAt: {
-      type: Date,
-      default: null,
-    },
-  },
-  {
-    timestamps: true,
-  }
-);
+      studentId: {
+        type: String,
+        required: true,
+        trim: true,
+        index: true,
+      },
 
-module.exports = mongoose.model(
-  "PendingOnlinePayment",
-  pendingOnlinePaymentSchema
-);
+      // ================================================
+      // Fee Head
+      // ================================================
+
+      feeHead: {
+        type: String,
+        enum: ALLOWED_FEE_HEADS,
+        required: true,
+        trim: true,
+      },
+
+      // ================================================
+      // Payment Amount
+      // ================================================
+
+      amount: {
+        type: Number,
+        required: true,
+        min: 0.01,
+      },
+
+      // ================================================
+      // Razorpay Payment ID
+      // ================================================
+
+      paymentId: {
+        type: String,
+        default: "",
+        index: true,
+        trim: true,
+      },
+
+      // ================================================
+      // Payment Status
+      // ================================================
+
+      status: {
+        type: String,
+        enum: [
+          "PENDING",
+          "SUCCESS",
+          "FAILED",
+        ],
+        default: "PENDING",
+        index: true,
+      },
+
+      // ================================================
+      // QR Image
+      // ================================================
+
+      qrImageUrl: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      // ================================================
+      // Created By
+      // ================================================
+      //
+      // For public payment this can be null.
+      //
+
+      createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      // ================================================
+      // Payment Completed At
+      // ================================================
+
+      completedAt: {
+        type: Date,
+        default: null,
+      },
+    },
+    {
+      timestamps: true,
+    }
+  );
+
+// =====================================================
+// Indexes
+// =====================================================
+
+pendingOnlinePaymentSchema.index({
+  studentId: 1,
+  status: 1,
+});
+
+pendingOnlinePaymentSchema.index({
+  paymentId: 1,
+  status: 1,
+});
+
+// =====================================================
+// Export
+// =====================================================
+
+module.exports =
+  mongoose.model(
+    "PendingOnlinePayment",
+    pendingOnlinePaymentSchema
+  );

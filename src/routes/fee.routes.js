@@ -2,74 +2,112 @@ const express = require("express");
 
 const router = express.Router();
 
-const feeController = require("../controllers/fee.controller");
+const feeController =
+  require("../controllers/fee.controller");
 
-const auth = require("../middleware/auth.middleware");
-const authorize = require("../middleware/role.middleware");
+const auth =
+  require("../middleware/auth.middleware");
 
-const validate = require("../middleware/validation.middleware");
+const authorize =
+  require("../middleware/role.middleware");
+
+const validate =
+  require("../middleware/validation.middleware");
 
 const {
   collectFeeValidation,
   onlineQRValidation,
 } = require("../validators/fee.validator");
 
-// ====================================
-// Collect Fee
-// ====================================
+// =====================================================
+// Collect CASH Fee
+// ADMIN / RECEPTIONIST
+// =====================================================
 
 router.post(
   "/collect",
+
   auth,
-  authorize("ADMIN", "RECEPTIONIST"),
+
+  authorize(
+    "ADMIN",
+    "RECEPTIONIST"
+  ),
+
   collectFeeValidation,
+
   validate,
+
   feeController.collectFee
 );
 
-// ====================================
-// Online QR Create
-// ====================================
+// =====================================================
+// Create Online QR
+// PUBLIC
+// =====================================================
+//
+// Student can search student and create
+// payment QR without login.
+//
 
 router.post(
   "/online/create-qr",
-  auth,
-  authorize("ADMIN", "RECEPTIONIST"),
+
   onlineQRValidation,
+
   validate,
+
   feeController.createOnlineQR
 );
 
-// ====================================
-// Online Payment Status
-// ====================================
+// =====================================================
+// Check Online Payment Status
+// PUBLIC
+// =====================================================
+//
+// Student can check payment status
+// using QR ID.
+//
 
 router.get(
   "/online/status/:qrId",
-  auth,
-  authorize("ADMIN", "RECEPTIONIST"),
+
   feeController.checkOnlinePayment
 );
 
-// ====================================
+// =====================================================
 // Fee History
-// ====================================
+// ADMIN / RECEPTIONIST
+// =====================================================
 
 router.get(
   "/history/:studentId",
+
   auth,
-  authorize("ADMIN", "RECEPTIONIST"),
+
+  authorize(
+    "ADMIN",
+    "RECEPTIONIST"
+  ),
+
   feeController.getFeeHistory
 );
 
-// ====================================
-// Receipt
-// ====================================
+// =====================================================
+// Receipt Details
+// ADMIN / RECEPTIONIST
+// =====================================================
 
 router.get(
   "/receipt/:id",
+
   auth,
-  authorize("ADMIN", "RECEPTIONIST"),
+
+  authorize(
+    "ADMIN",
+    "RECEPTIONIST"
+  ),
+
   feeController.getReceipt
 );
 

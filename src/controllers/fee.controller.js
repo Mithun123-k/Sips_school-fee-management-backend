@@ -6,9 +6,10 @@ const sendResponse =
 const feeService =
   require("../services/fee.service");
 
-// ====================================
-// Collect Fee
-// ====================================
+// =====================================================
+// Collect CASH Fee
+// ADMIN / RECEPTIONIST
+// =====================================================
 
 exports.collectFee = asyncHandler(
   async (req, res) => {
@@ -28,16 +29,22 @@ exports.collectFee = asyncHandler(
   }
 );
 
-// ====================================
+// =====================================================
 // Create Online QR
-// ====================================
+// PUBLIC
+// =====================================================
+//
+// Student can search himself and create QR
+// without login.
+//
 
 exports.createOnlineQR = asyncHandler(
   async (req, res) => {
-    const qr = await feeService.createOnlineQR(
-      req.body,
-      req.user.id
-    );
+    const qr =
+      await feeService.createOnlineQR(
+        req.body,
+        null
+      );
 
     return sendResponse(
       res,
@@ -49,9 +56,14 @@ exports.createOnlineQR = asyncHandler(
   }
 );
 
-// ====================================
+// =====================================================
 // Check Online Payment
-// ====================================
+// PUBLIC
+// =====================================================
+//
+// Student can check payment status
+// without login.
+//
 
 exports.checkOnlinePayment =
   asyncHandler(
@@ -59,7 +71,7 @@ exports.checkOnlinePayment =
       const result =
         await feeService.checkOnlinePayment(
           req.params.qrId,
-          req.user.id
+          null
         );
 
       return sendResponse(
@@ -74,9 +86,10 @@ exports.checkOnlinePayment =
     }
   );
 
-// ====================================
+// =====================================================
 // Fee History
-// ====================================
+// ADMIN / RECEPTIONIST
+// =====================================================
 
 exports.getFeeHistory =
   asyncHandler(
@@ -96,9 +109,10 @@ exports.getFeeHistory =
     }
   );
 
-// ====================================
+// =====================================================
 // Receipt Details
-// ====================================
+// ADMIN / RECEPTIONIST
+// =====================================================
 
 exports.getReceipt =
   asyncHandler(

@@ -6,31 +6,38 @@ const razorpay = require("../config/razorpay");
 
 const generateReceiptNo = require("../utils/generateReceiptNo");
 
-// ==============================
-// Collect CASH / Manual Fee
-// ==============================
+// =====================================================
+// Allowed Fee Heads
+// =====================================================
 
-const collectFee = async (body, userId) => {
-  const {
-    studentId,
-    amount,
-    paymentMode,
-    transactionId,
-    remarks,
-  } = body;
+const ALLOWED_FEE_HEADS = [
+  "ADMISSION",
+  "MONTHLY",
+  "EXAM",
+  "SPORT",
+  "COMPUTER",
+  "FUNCTION",
+  "SMART_CLASS",
+  "OTHER",
+];
 
-  // Find Student
-  const student =
-    await studentRepository.findByStudentId(studentId);
+// =====================================================
+// Validate Fee Head
+// =====================================================
 
-  if (!student) {
-    throw new Error("Student not found");
+const validateFeeHead = (feeHead) => {
+  if (!ALLOWED_FEE_HEADS.includes(feeHead)) {
+    throw new Error("Invalid fee head");
   }
+};
 
-  // Convert amount to Number
+// =====================================================
+// Validate Amount
+// =====================================================
+
+const validateAmount = (amount) => {
   const paymentAmount = Number(amount);
 
-  // Validate Amount
   if (
     !Number.isFinite(paymentAmount) ||
     paymentAmount <= 0
@@ -40,78 +47,14 @@ const collectFee = async (body, userId) => {
     );
   }
 
-  // Current Due Fee
-  const currentDueFee =
-    Number(student.dueFee || 0);
-
-  // Due Amount Validation
-  if (paymentAmount > currentDueFee) {
-    throw new Error(
-      `Amount cannot be greater than due fee. Due fee is ₹${currentDueFee}`
-    );
-  }
-
-  // Generate Receipt
-  const receiptNo =
-    await generateReceiptNo();
-
-  // Create Fee Entry
-  const fee =
-    await feeRepository.createFee({
-      receiptNo,
-
-      student: student._id,
-
-      studentId: student.studentId,
-
-      amount: paymentAmount,
-
-      paymentMode,
-
-      transactionId,
-
-      remarks,
-
-      collectedBy: userId,
-    });
-
-  // ==============================
-  // Update Student Fee
-  // ==============================
-
-  const paidFee =
-    Number(student.paidFee || 0) +
-    paymentAmount;
-
-  const dueFee =
-    Math.max(
-      currentDueFee - paymentAmount,
-      0
-    );
-
-  await studentRepository.updateFee(
-    student._id,
-    paidFee,
-    dueFee
-  );
-
-  return fee;
+  return paymentAmount;
 };
 
-// ==============================
-// Create Online QR
-// ==============================
+// =====================================================
+// Find Student
+// =====================================================
 
-const createOnlineQR = async (
-  body,
-  userId
-) => {
-  const {
-    studentId,
-    amount,
-  } = body;
-
-  // Find Student
+const getStudent = async (studentId) => {
   const student =
     await studentRepository.findByStudentId(
       studentId
@@ -121,68 +64,271 @@ const createOnlineQR = async (
     throw new Error("Student not found");
   }
 
-  // Convert Amount
-  const paymentAmount =
-    Number(amount);
-
-  // Validate Amount
-  if (
-    !Number.isFinite(paymentAmount) ||
-    paymentAmount <= 0
-  ) {
+  if (student.status !== "ACTIVE") {
     throw new Error(
-      "Amount must be greater than zero"
+      "Student is not active"
     );
   }
 
-  // Current Due Fee
+  return student;
+};
+
+// =====================================================
+// Validate Due Amount
+// =====================================================
+
+const validateDueAmount = (
+  paymentAmount,
+  dueFee
+) => {
   const currentDueFee =
-    Number(student.dueFee || 0);
+    Number(dueFee || 0);
 
-  console.log(
-    "===== ONLINE QR PAYMENT ====="
-  );
-
-  console.log(
-    "Student ID:",
-    student.studentId
-  );
-
-  console.log(
-    "Payment Amount:",
-    paymentAmount
-  );
-
-  console.log(
-    "Current Due Fee:",
-    currentDueFee
-  );
-
-  console.log(
-    "Can Pay:",
-    paymentAmount <= currentDueFee
-  );
-
-  console.log(
-    "=============================="
-  );
-
-  // Due Fee Validation
   if (paymentAmount > currentDueFee) {
     throw new Error(
       `Amount cannot be greater than due fee. Due fee is ₹${currentDueFee}`
     );
   }
 
-  // Razorpay amount is in paise
+  return currentDueFee;
+};
+
+// =====================================================
+// Collect CASH Fee
+// =====================================================
+
+const collectFee = async (
+  body,
+  userId
+) => {
+  const {
+    studentId,
+    feeHead,
+    amount,
+    paymentMode,
+    transactionId,
+    remarks,
+  } = body;
+
+  // ---------------------------------------------------
+  // Fee Head
+  // ---------------------------------------------------
+
+  validateFeeHead(feeHead);
+
+  // ---------------------------------------------------
+  // CASH Only
+  // ---------------------------------------------------
+
+  if (paymentMode !== "CASH") {
+    throw new Error(
+      "Manual fee collection is only allowed for CASH payment"
+    );
+  }
+
+  // ---------------------------------------------------
+  // Student
+  // ---------------------------------------------------
+
+  const student =
+    await getStudent(studentId);
+
+  // ---------------------------------------------------
+  // Amount
+  // ---------------------------------------------------
+
+  const paymentAmount =
+    validateAmount(amount);
+
+  // ---------------------------------------------------
+  // Due
+  // ---------------------------------------------------
+
+  const currentDueFee =
+    validateDueAmount(
+      paymentAmount,
+      student.dueFee
+    );
+
+  // ---------------------------------------------------
+  // Receipt
+  // ---------------------------------------------------
+
+  const receiptNo =
+    await generateReceiptNo();
+
+  // ---------------------------------------------------
+  // Create Fee
+  // ---------------------------------------------------
+
+  const fee =
+    await feeRepository.createFee({
+      receiptNo,
+
+      student:
+        student._id,
+
+      studentId:
+        student.studentId,
+
+      feeHead,
+
+      amount:
+        paymentAmount,
+
+      paymentMode:
+        "CASH",
+
+      paymentStatus:
+        "SUCCESS",
+
+      transactionId:
+        transactionId || "",
+
+      remarks:
+        remarks || "",
+
+      collectedBy:
+        userId,
+    });
+
+  // ---------------------------------------------------
+  // Update Student
+  // ---------------------------------------------------
+
+  const paidFee =
+    Number(student.paidFee || 0) +
+    paymentAmount;
+
+  const dueFee =
+    Math.max(
+      currentDueFee -
+        paymentAmount,
+      0
+    );
+
+  const updatedStudent =
+    await studentRepository.updateFee(
+      student._id,
+      paidFee,
+      dueFee
+    );
+
+  if (!updatedStudent) {
+    throw new Error(
+      "Failed to update student fee"
+    );
+  }
+
+  return {
+    fee,
+
+    student: {
+      studentId:
+        updatedStudent.studentId,
+
+      paidFee:
+        updatedStudent.paidFee,
+
+      dueFee:
+        updatedStudent.dueFee,
+    },
+  };
+};
+
+// =====================================================
+// Create Online QR
+// =====================================================
+//
+// PUBLIC
+//
+// userId can be null.
+//
+
+const createOnlineQR = async (
+  body,
+  userId = null
+) => {
+  const {
+    studentId,
+    feeHead,
+    amount,
+  } = body;
+
+  // ---------------------------------------------------
+  // Fee Head
+  // ---------------------------------------------------
+
+  validateFeeHead(feeHead);
+
+  // ---------------------------------------------------
+  // Student
+  // ---------------------------------------------------
+
+  const student =
+    await getStudent(studentId);
+
+  // ---------------------------------------------------
+  // Amount
+  // ---------------------------------------------------
+
+  const paymentAmount =
+    validateAmount(amount);
+
+  // ---------------------------------------------------
+  // Due
+  // ---------------------------------------------------
+
+  const currentDueFee =
+    validateDueAmount(
+      paymentAmount,
+      student.dueFee
+    );
+
+  console.log(
+    "===================================="
+  );
+
+  console.log(
+    "ONLINE QR PAYMENT"
+  );
+
+  console.log(
+    "Student:",
+    student.studentId
+  );
+
+  console.log(
+    "Fee Head:",
+    feeHead
+  );
+
+  console.log(
+    "Amount:",
+    paymentAmount
+  );
+
+  console.log(
+    "Due:",
+    currentDueFee
+  );
+
+  console.log(
+    "===================================="
+  );
+
+  // ---------------------------------------------------
+  // Razorpay Amount
+  // ---------------------------------------------------
+
   const razorpayAmount =
     Math.round(
       paymentAmount * 100
     );
 
-  // ==============================
-  // Create Razorpay Dynamic QR
-  // ==============================
+  // ---------------------------------------------------
+  // Create Razorpay QR
+  // ---------------------------------------------------
 
   const qr =
     await razorpay.qrCode.create({
@@ -191,15 +337,17 @@ const createOnlineQR = async (
       name:
         `School Fee ${student.studentId}`,
 
-      usage: "single_use",
+      usage:
+        "single_use",
 
-      fixed_amount: true,
+      fixed_amount:
+        true,
 
       payment_amount:
         razorpayAmount,
 
       description:
-        `Fee Payment - ${student.studentId}`,
+        `${feeHead} Fee Payment - ${student.studentId}`,
 
       notes: {
         studentId:
@@ -207,49 +355,64 @@ const createOnlineQR = async (
 
         studentMongoId:
           student._id.toString(),
+
+        feeHead,
       },
     });
 
-  // ==============================
+  // ---------------------------------------------------
   // Save Pending Payment
-  // ==============================
+  // ---------------------------------------------------
 
-  await pendingOnlinePaymentRepository
-    .createPendingPayment({
-      qrId: qr.id,
+  const pendingPayment =
+    await pendingOnlinePaymentRepository
+      .createPendingPayment({
+        qrId:
+          qr.id,
 
-      student: student._id,
+        student:
+          student._id,
 
-      studentId:
-        student.studentId,
+        studentId:
+          student.studentId,
 
-      amount:
-        paymentAmount,
+        feeHead,
 
-      qrImageUrl:
-        qr.image_url,
+        amount:
+          paymentAmount,
 
-      createdBy:
-        userId,
+        qrImageUrl:
+          qr.image_url,
 
-      status: "PENDING",
-    });
+        createdBy:
+          userId || null,
+
+        status:
+          "PENDING",
+      });
+
+  // ---------------------------------------------------
+  // Return
+  // ---------------------------------------------------
 
   return {
     qrId:
-      qr.id,
+      pendingPayment.qrId,
 
     studentId:
-      student.studentId,
+      pendingPayment.studentId,
+
+    feeHead:
+      pendingPayment.feeHead,
 
     amount:
-      paymentAmount,
+      pendingPayment.amount,
 
     imageUrl:
-      qr.image_url,
+      pendingPayment.qrImageUrl,
 
     status:
-      qr.status,
+      "PENDING",
 
     paymentMode:
       "ONLINE",
@@ -259,15 +422,23 @@ const createOnlineQR = async (
   };
 };
 
-// ==============================
+// =====================================================
 // Check Online Payment
-// ==============================
+// =====================================================
+//
+// PUBLIC
+//
+// userId can be null.
+//
 
 const checkOnlinePayment = async (
   qrId,
-  userId
+  userId = null
 ) => {
-  // Find Pending Payment
+  // ---------------------------------------------------
+  // Pending Payment
+  // ---------------------------------------------------
+
   const pendingPayment =
     await pendingOnlinePaymentRepository
       .findByQrId(qrId);
@@ -278,24 +449,41 @@ const checkOnlinePayment = async (
     );
   }
 
-  // Already successful
+  // ---------------------------------------------------
+  // Already Success
+  // ---------------------------------------------------
+
   if (
     pendingPayment.status ===
     "SUCCESS"
   ) {
+    const existingFee =
+      pendingPayment.paymentId
+        ? await feeRepository
+            .findByTransactionId(
+              pendingPayment.paymentId
+            )
+        : null;
+
     return {
       paid: true,
 
-      status: "SUCCESS",
+      status:
+        "SUCCESS",
+
+      qrId,
 
       paymentId:
         pendingPayment.paymentId,
+
+      fee:
+        existingFee,
     };
   }
 
-  // ==============================
-  // Fetch Payments From Razorpay
-  // ==============================
+  // ---------------------------------------------------
+  // Fetch Razorpay Payments
+  // ---------------------------------------------------
 
   const response =
     await razorpay.qrCode.fetchPayments(
@@ -305,7 +493,10 @@ const checkOnlinePayment = async (
   const payments =
     response.items || [];
 
+  // ---------------------------------------------------
   // Find Captured Payment
+  // ---------------------------------------------------
+
   const successfulPayment =
     payments.find(
       (payment) =>
@@ -313,20 +504,30 @@ const checkOnlinePayment = async (
         "captured"
     );
 
-  // Payment Not Completed
+  // ---------------------------------------------------
+  // Still Pending
+  // ---------------------------------------------------
+
   if (!successfulPayment) {
     return {
       paid: false,
 
-      status: "PENDING",
+      status:
+        "PENDING",
 
       qrId,
+
+      feeHead:
+        pendingPayment.feeHead,
+
+      amount:
+        pendingPayment.amount,
     };
   }
 
-  // ==============================
+  // ---------------------------------------------------
   // Payment Amount
-  // ==============================
+  // ---------------------------------------------------
 
   const paidAmount =
     Number(
@@ -338,9 +539,9 @@ const checkOnlinePayment = async (
       pendingPayment.amount
     );
 
-  // ==============================
-  // Amount Validation
-  // ==============================
+  // ---------------------------------------------------
+  // Amount Check
+  // ---------------------------------------------------
 
   if (
     paidAmount !==
@@ -351,29 +552,57 @@ const checkOnlinePayment = async (
     );
   }
 
-  // ==============================
-  // Find Student
-  // ==============================
+  // ---------------------------------------------------
+  // Duplicate Payment Protection
+  // ---------------------------------------------------
 
-  const student =
-    await studentRepository
-      .findByStudentId(
-        pendingPayment.studentId
+  const existingFee =
+    await feeRepository
+      .findByTransactionId(
+        successfulPayment.id
       );
 
-  if (!student) {
-    throw new Error(
-      "Student not found"
-    );
+  if (existingFee) {
+    await pendingOnlinePaymentRepository
+      .markPaymentSuccess(
+        qrId,
+        successfulPayment.id
+      );
+
+    return {
+      paid: true,
+
+      status:
+        "SUCCESS",
+
+      qrId,
+
+      paymentId:
+        successfulPayment.id,
+
+      receiptNo:
+        existingFee.receiptNo,
+
+      fee:
+        existingFee,
+    };
   }
 
-  // Current Due Fee
+  // ---------------------------------------------------
+  // Student
+  // ---------------------------------------------------
+
+  const student =
+    await getStudent(
+      pendingPayment.studentId
+    );
+
+  // ---------------------------------------------------
+  // Due
+  // ---------------------------------------------------
+
   const currentDueFee =
     Number(student.dueFee || 0);
-
-  // ==============================
-  // Due Fee Validation
-  // ==============================
 
   if (
     paidAmount >
@@ -384,56 +613,16 @@ const checkOnlinePayment = async (
     );
   }
 
-  // ==============================
-  // Duplicate Protection
-  // ==============================
-
-  const existingFee =
-    await feeRepository
-      .findByTransactionId(
-        successfulPayment.id
-      );
-
-  if (existingFee) {
-    await pendingOnlinePaymentRepository
-      .updatePayment(
-        qrId,
-        {
-          paymentId:
-            successfulPayment.id,
-
-          status:
-            "SUCCESS",
-
-          completedAt:
-            new Date(),
-        }
-      );
-
-    return {
-      paid: true,
-
-      status:
-        "SUCCESS",
-
-      paymentId:
-        successfulPayment.id,
-
-      fee:
-        existingFee,
-    };
-  }
-
-  // ==============================
-  // Generate Receipt
-  // ==============================
+  // ---------------------------------------------------
+  // Receipt
+  // ---------------------------------------------------
 
   const receiptNo =
     await generateReceiptNo();
 
-  // ==============================
+  // ---------------------------------------------------
   // Create Fee
-  // ==============================
+  // ---------------------------------------------------
 
   const fee =
     await feeRepository.createFee({
@@ -444,6 +633,9 @@ const checkOnlinePayment = async (
 
       studentId:
         student.studentId,
+
+      feeHead:
+        pendingPayment.feeHead,
 
       amount:
         paidAmount,
@@ -461,12 +653,12 @@ const checkOnlinePayment = async (
         "Online UPI QR Payment",
 
       collectedBy:
-        userId,
+        userId || null,
     });
 
-  // ==============================
+  // ---------------------------------------------------
   // Update Student Fee
-  // ==============================
+  // ---------------------------------------------------
 
   const paidFee =
     Number(student.paidFee || 0) +
@@ -482,45 +674,37 @@ const checkOnlinePayment = async (
   const updatedStudent =
     await studentRepository.updateFee(
       student._id,
-
       paidFee,
-
       dueFee
     );
 
-  console.log(
-    "===== STUDENT FEE UPDATED ====="
-  );
+  if (!updatedStudent) {
+    throw new Error(
+      "Failed to update student fee"
+    );
+  }
 
-  console.log(
-    "Student:",
-    updatedStudent
-  );
-
-  // ==============================
-  // Mark Payment SUCCESS
-  // ==============================
+  // ---------------------------------------------------
+  // Mark Pending Payment SUCCESS
+  // ---------------------------------------------------
 
   await pendingOnlinePaymentRepository
-    .updatePayment(
+    .markPaymentSuccess(
       qrId,
-      {
-        paymentId:
-          successfulPayment.id,
-
-        status:
-          "SUCCESS",
-
-        completedAt:
-          new Date(),
-      }
+      successfulPayment.id
     );
+
+  // ---------------------------------------------------
+  // Return Success
+  // ---------------------------------------------------
 
   return {
     paid: true,
 
     status:
       "SUCCESS",
+
+    qrId,
 
     paymentId:
       successfulPayment.id,
@@ -533,6 +717,12 @@ const checkOnlinePayment = async (
       studentId:
         updatedStudent.studentId,
 
+      name:
+        updatedStudent.name,
+
+      feeHead:
+        pendingPayment.feeHead,
+
       paidFee:
         updatedStudent.paidFee,
 
@@ -542,20 +732,34 @@ const checkOnlinePayment = async (
   };
 };
 
-// ==============================
+// =====================================================
 // Fee History
-// ==============================
+// =====================================================
 
 const getFeeHistory = async (
   studentId
 ) => {
+  const student =
+    await studentRepository
+      .findByStudentId(
+        studentId
+      );
+
+  if (!student) {
+    throw new Error(
+      "Student not found"
+    );
+  }
+
   return await feeRepository
-    .getFeeHistory(studentId);
+    .getFeeHistory(
+      student.studentId
+    );
 };
 
-// ==============================
+// =====================================================
 // Receipt Details
-// ==============================
+// =====================================================
 
 const getReceipt = async (
   id
@@ -572,6 +776,10 @@ const getReceipt = async (
 
   return receipt;
 };
+
+// =====================================================
+// Export
+// =====================================================
 
 module.exports = {
   collectFee,

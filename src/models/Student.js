@@ -2,9 +2,9 @@ const mongoose = require("mongoose");
 
 const studentSchema = new mongoose.Schema(
   {
-    // ============================
+    // =====================================================
     // Student Basic Information
-    // ============================
+    // =====================================================
 
     studentId: {
       type: String,
@@ -16,6 +16,8 @@ const studentSchema = new mongoose.Schema(
     admissionNo: {
       type: String,
       default: "",
+      unique: true,
+      sparse: true,
       trim: true,
     },
 
@@ -40,7 +42,6 @@ const studentSchema = new mongoose.Schema(
     mobile: {
       type: String,
       required: true,
-      unique: true,
       trim: true,
     },
 
@@ -79,65 +80,131 @@ const studentSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // ============================
+    // =====================================================
     // Admission Information
-    // ============================
+    // =====================================================
 
     admissionDate: {
       type: Date,
       default: Date.now,
     },
 
-    // ============================
-    // Fee Management
-    // ============================
+    // =====================================================
+    // Student Fee Heads
+    // =====================================================
+    //
+    // These values are the actual fees assigned
+    // to this particular student.
+    //
+    // Initially they can come from FeeStructure.
+    // Later ADMIN can override them individually.
+    //
 
-    // Monthly fee of the student
+    admissionFee: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     monthlyFee: {
       type: Number,
       default: 0,
       min: 0,
     },
 
-    // Previous pending fee for old students
+    examFee: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    sportFee: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    computerFee: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    functionFee: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    smartClassFee: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    otherCharges: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    // =====================================================
+    // Previous Pending Fee
+    // =====================================================
+
     openingDue: {
       type: Number,
       default: 0,
       min: 0,
     },
 
-    // Total fee structure / annual or overall fee
+    // =====================================================
+    // Total Fee
+    // =====================================================
+    //
+    // Sum of all applicable fee heads + opening due.
+    //
+
     totalFee: {
       type: Number,
       default: 0,
       min: 0,
     },
 
-    // Total amount paid by student
+    // =====================================================
+    // Total Amount Paid
+    // =====================================================
+
     paidFee: {
       type: Number,
       default: 0,
       min: 0,
     },
 
-    // Current outstanding amount
+    // =====================================================
+    // Current Outstanding Fee
+    // =====================================================
+    //
+    // dueFee = totalFee - paidFee
+    //
+
     dueFee: {
       type: Number,
       default: 0,
       min: 0,
     },
 
-    // Fee calculation starts from this date
-    // Example:
-    // Admission: 15 July
-    // Fee Start: 01 August
+    // =====================================================
+    // Fee Calculation Start Date
+    // =====================================================
+
     feeStartDate: {
       type: Date,
     },
 
-    // ============================
+    // =====================================================
     // Student Status
-    // ============================
+    // =====================================================
 
     status: {
       type: String,
@@ -145,24 +212,29 @@ const studentSchema = new mongoose.Schema(
       default: "ACTIVE",
     },
 
+    // =====================================================
     // Soft Delete
+    // =====================================================
+
     isDeleted: {
       type: Boolean,
       default: false,
     },
 
-    // ============================
+    // =====================================================
     // User Tracking
-    // ============================
+    // =====================================================
 
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
+      default: null,
     },
 
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
+      default: null,
     },
   },
   {
@@ -170,4 +242,23 @@ const studentSchema = new mongoose.Schema(
   }
 );
 
-module.exports = mongoose.model("Student", studentSchema);
+// =====================================================
+// Duplicate Student Protection
+// =====================================================
+
+studentSchema.index(
+  {
+    name: 1,
+    fatherName: 1,
+    motherName: 1,
+    className: 1,
+  },
+  {
+    unique: true,
+  }
+);
+
+module.exports = mongoose.model(
+  "Student",
+  studentSchema
+);

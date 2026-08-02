@@ -8,9 +8,12 @@ const generateStudentId = require("../utils/generateStudentId");
 const calculateFeeStartDate = (admissionDate) => {
   const date = new Date(admissionDate);
 
+  if (Number.isNaN(date.getTime())) {
+    throw new Error("Invalid admission date");
+  }
+
   // ===================================================
   // TEST MODE
-  // Fee starts from STUDENT CREATION TIME
   // 1 minute = 1 month
   // ===================================================
 
@@ -20,6 +23,7 @@ const calculateFeeStartDate = (admissionDate) => {
 
   // ===================================================
   // PRODUCTION MODE
+  //
   // Admission: 15 July
   // Fee Start: 01 August
   // ===================================================
@@ -32,107 +36,59 @@ const calculateFeeStartDate = (admissionDate) => {
 };
 
 // =====================================================
-// Calculate Monthly Fee
+// Validate Fee Values
 // =====================================================
 
-const calculateMonthlyFee = (
-  feeStartDate,
+const validateFeeValues = ({
   monthlyFee,
-  currentDate = new Date()
-) => {
-  if (!feeStartDate || !monthlyFee) {
-    return 0;
+  openingDue,
+  totalFee,
+}) => {
+  const finalMonthlyFee = Number(monthlyFee || 0);
+  const finalOpeningDue = Number(openingDue || 0);
+  const finalTotalFee = Number(totalFee || 0);
+
+  if (
+    !Number.isFinite(finalMonthlyFee) ||
+    !Number.isFinite(finalOpeningDue) ||
+    !Number.isFinite(finalTotalFee)
+  ) {
+    throw new Error("Fee values must be valid numbers");
   }
 
-  const startDate = new Date(feeStartDate);
-  const today = new Date(currentDate);
-
-  // ===================================================
-  // TEST MODE
-  // 1 MINUTE = 1 MONTH
-  // ===================================================
-
-  if (process.env.TEST_FEE_MODE === "true") {
-    const diffMs =
-      today.getTime() - startDate.getTime();
-
-    if (diffMs < 0) {
-      return 0;
-    }
-
-    const minutesPassed = Math.floor(
-      diffMs / (60 * 1000)
-    );
-
-    // Creation = 1 month
-    // 1 minute = 2 months
-    // 2 minutes = 3 months
-
-    const months = minutesPassed + 1;
-
-    return months * Number(monthlyFee);
+  if (
+    finalMonthlyFee < 0 ||
+    finalOpeningDue < 0 ||
+    finalTotalFee < 0
+  ) {
+    throw new Error("Fee values cannot be negative");
   }
 
-  // ===================================================
-  // PRODUCTION MODE
-  // REAL CALENDAR MONTH
-  // ===================================================
-
-  startDate.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-
-  // Fee has not started
-  if (today < startDate) {
-    return 0;
-  }
-
-  const months =
-    (today.getFullYear() - startDate.getFullYear()) * 12 +
-    (today.getMonth() - startDate.getMonth()) +
-    1;
-
-  return months * Number(monthlyFee);
-};
-
-// =====================================================
-// Calculate Total Due Fee
-// =====================================================
-
-const calculateDueFee = (
-  student,
-  currentDate = new Date()
-) => {
-  const openingDue =
-    Number(student.openingDue || 0);
-
-  const monthlyFeeAmount =
-    calculateMonthlyFee(
-      student.feeStartDate,
-      Number(student.monthlyFee || 0),
-      currentDate
-    );
-
-  const paidFee =
-    Number(student.paidFee || 0);
-
-  const totalDue =
-    openingDue +
-    monthlyFeeAmount -
-    paidFee;
-
-  return Math.max(totalDue, 0);
+  return {
+    monthlyFee: finalMonthlyFee,
+    openingDue: finalOpeningDue,
+    totalFee: finalTotalFee,
+  };
 };
 
 // =====================================================
 // Create Student
+// ADMIN ONLY
 // =====================================================
 
-const createStudent = async (
-  body,
-  userId
-) => {
+const createStudent = async (body, userId) => {
   const {
+    admissionNo,
+    name,
+    fatherName,
+    motherName,
     mobile,
+    email,
+    gender,
+    dob,
+    className,
+    section,
+    address,
     admissionDate,
     monthlyFee,
     openingDue,
@@ -140,28 +96,72 @@ const createStudent = async (
   } = body;
 
   // ===================================================
-  // Check Mobile
+  // Check Duplicate Student
   // ===================================================
 
   const existingStudent =
-    await studentRepository.findByMobile(
-      mobile
+    await studentRepository.findByAdmissionNo(
+      admissionNo,
+      name,
+      fatherName,
+      motherName,
+      className
     );
 
   if (existingStudent) {
+    if (
+      admissionNo &&
+      existingStudent.admissionNo === admissionNo
+    ) {
+      throw new Error(
+        "Student with this admission number already exists"
+      );
+    }
+
     throw new Error(
-      "Mobile number already exists"
+      "Student with same name, father name, mother name and class already exists"
     );
   }
+
+  // ===================================================
+  // Generate Student ID
+  // ===================================================
+
+  const studentId = await generateStudentId();
 
   // ===================================================
   // Admission Date
   // ===================================================
 
-  const finalAdmissionDate =
-    admissionDate
-      ? new Date(admissionDate)
-      : new Date();
+  const finalAdmissionDate = admissionDate
+    ? new Date(admissionDate)
+    : new Date();
+
+  if (
+    Number.isNaN(
+      finalAdmissionDate.getTime()
+    )
+  ) {
+    throw new Error("Invalid admission date");
+  }
+
+  // ===================================================
+  // Fee Values
+  // ===================================================
+
+  const feeValues = validateFeeValues({
+    monthlyFee,
+    openingDue,
+    totalFee,
+  });
+
+  // ===================================================
+  // Initial Fee Calculation
+  // ===================================================
+
+  const paidFee = 0;
+
+  const dueFee = feeValues.openingDue;
 
   // ===================================================
   // Fee Start Date
@@ -173,85 +173,71 @@ const createStudent = async (
     );
 
   // ===================================================
-  // Fee Values
-  // ===================================================
-
-  const finalMonthlyFee =
-    Number(monthlyFee || 0);
-
-  const finalOpeningDue =
-    Number(openingDue || 0);
-
-  const finalTotalFee =
-    Number(totalFee || 0);
-
-  const finalPaidFee = 0;
-
-  // ===================================================
-  // Generate Student ID
-  // ===================================================
-
-  const studentId =
-    await generateStudentId();
-
-  // ===================================================
-  // Student Data
-  // ===================================================
-
-  const studentData = {
-    ...body,
-
-    studentId,
-
-    admissionDate:
-      finalAdmissionDate,
-
-    feeStartDate,
-
-    monthlyFee:
-      finalMonthlyFee,
-
-    openingDue:
-      finalOpeningDue,
-
-    totalFee:
-      finalTotalFee,
-
-    paidFee:
-      finalPaidFee,
-
-    dueFee: 0,
-
-    createdBy: userId,
-  };
-
-  // ===================================================
   // Create Student
   // ===================================================
 
   const student =
-    await studentRepository.createStudent(
-      studentData
-    );
+    await studentRepository.createStudent({
+      studentId,
 
-  // ===================================================
-  // Calculate Initial Due
-  // ===================================================
+      admissionNo:
+        admissionNo || "",
 
-  const dueFee =
-    calculateDueFee(student);
+      name,
 
-  // ===================================================
-  // Update Due Fee In MongoDB
-  // ===================================================
+      fatherName,
 
-  await studentRepository.updateDueFee(
-    student._id,
-    dueFee
-  );
+      motherName:
+        motherName || "",
 
-  // Update API response
-  student.dueFee = dueFee;
+      mobile,
+
+      email:
+        email || "",
+
+      gender,
+
+      dob:
+        dob || null,
+
+      className,
+
+      section:
+        section || "",
+
+      address:
+        address || "",
+
+      admissionDate:
+        finalAdmissionDate,
+
+      monthlyFee:
+        feeValues.monthlyFee,
+
+      openingDue:
+        feeValues.openingDue,
+
+      totalFee:
+        feeValues.totalFee,
+
+      paidFee,
+
+      dueFee,
+
+      feeStartDate,
+
+      status:
+        "ACTIVE",
+
+      isDeleted:
+        false,
+
+      createdBy:
+        userId,
+
+      updatedBy:
+        userId,
+    });
 
   return student;
 };
@@ -261,30 +247,7 @@ const createStudent = async (
 // =====================================================
 
 const getAllStudents = async () => {
-  const students =
-    await studentRepository.getAllStudents();
-
-  for (const student of students) {
-    // Calculate latest due
-    const dueFee =
-      calculateDueFee(student);
-
-    // Update MongoDB
-    if (
-      Number(student.dueFee) !==
-      Number(dueFee)
-    ) {
-      await studentRepository.updateDueFee(
-        student._id,
-        dueFee
-      );
-    }
-
-    // Update API response
-    student.dueFee = dueFee;
-  }
-
-  return students;
+  return await studentRepository.getAllStudents();
 };
 
 // =====================================================
@@ -293,74 +256,18 @@ const getAllStudents = async () => {
 
 const getStudentById = async (id) => {
   const student =
-    await studentRepository.getStudentById(
-      id
-    );
+    await studentRepository.getStudentById(id);
 
   if (!student) {
-    throw new Error(
-      "Student not found"
-    );
+    throw new Error("Student not found");
   }
-
-  // Calculate latest due
-  const dueFee =
-    calculateDueFee(student);
-
-  // Update MongoDB
-  if (
-    Number(student.dueFee) !==
-    Number(dueFee)
-  ) {
-    await studentRepository.updateDueFee(
-      student._id,
-      dueFee
-    );
-  }
-
-  // Update API response
-  student.dueFee = dueFee;
-
-  return student;
-};
-
-// =====================================================
-// Search Student
-// =====================================================
-
-const searchStudent = async (search) => {
-  const student =
-    await studentRepository.searchStudent(
-      search
-    );
-
-  if (!student) {
-    return null;
-  }
-
-  // Calculate latest due
-  const dueFee =
-    calculateDueFee(student);
-
-  // Update MongoDB
-  if (
-    Number(student.dueFee) !==
-    Number(dueFee)
-  ) {
-    await studentRepository.updateDueFee(
-      student._id,
-      dueFee
-    );
-  }
-
-  // Update API response
-  student.dueFee = dueFee;
 
   return student;
 };
 
 // =====================================================
 // Update Student
+// ADMIN ONLY
 // =====================================================
 
 const updateStudent = async (
@@ -368,87 +275,238 @@ const updateStudent = async (
   body,
   userId
 ) => {
-  // ===================================================
-  // Get Existing Student
-  // ===================================================
+  const student =
+    await studentRepository.getStudentById(id);
 
-  const existingStudent =
-    await studentRepository.getStudentById(
-      id
-    );
-
-  if (!existingStudent) {
-    throw new Error(
-      "Student not found"
-    );
+  if (!student) {
+    throw new Error("Student not found");
   }
 
   // ===================================================
-  // Updated By
+  // Prevent Direct Fee Manipulation
+  // ===================================================
+  //
+  // These values must only change through
+  // proper fee/payment APIs.
+  //
+  // paidFee
+  // dueFee
+  // openingDue
+  //
+  // are protected from normal student update.
   // ===================================================
 
-  body.updatedBy = userId;
+  const {
+    paidFee,
+    dueFee,
+    studentId,
+    isDeleted,
+    createdBy,
+    ...updateData
+  } = body;
 
   // ===================================================
-  // Admission Date Changed
+  // Prevent Manual Fee Manipulation
   // ===================================================
 
-  if (body.admissionDate) {
+  delete updateData.paidFee;
+  delete updateData.dueFee;
+
+  // Opening due should also not be changed
+  // through normal student update.
+
+  delete updateData.openingDue;
+
+  // ===================================================
+  // Admission Date Validation
+  // ===================================================
+
+  if (updateData.admissionDate) {
     const newAdmissionDate =
-      new Date(body.admissionDate);
+      new Date(updateData.admissionDate);
 
-    body.feeStartDate =
+    if (
+      Number.isNaN(
+        newAdmissionDate.getTime()
+      )
+    ) {
+      throw new Error(
+        "Invalid admission date"
+      );
+    }
+
+    updateData.admissionDate =
+      newAdmissionDate;
+
+    // Recalculate fee start date
+    updateData.feeStartDate =
       calculateFeeStartDate(
         newAdmissionDate
       );
   }
 
   // ===================================================
-  // Update Student
+  // Validate Monthly Fee / Total Fee
   // ===================================================
 
-  const student =
-    await studentRepository.updateStudent(
-      id,
-      body
+  if (
+    updateData.monthlyFee !== undefined ||
+    updateData.totalFee !== undefined
+  ) {
+    const monthlyFee =
+      updateData.monthlyFee !== undefined
+        ? updateData.monthlyFee
+        : student.monthlyFee;
+
+    const totalFee =
+      updateData.totalFee !== undefined
+        ? updateData.totalFee
+        : student.totalFee;
+
+    const feeValues =
+      validateFeeValues({
+        monthlyFee,
+        openingDue:
+          student.openingDue,
+        totalFee,
+      });
+
+    updateData.monthlyFee =
+      feeValues.monthlyFee;
+
+    updateData.totalFee =
+      feeValues.totalFee;
+  }
+
+  // ===================================================
+  // Duplicate Check
+  // ===================================================
+
+  const name =
+    updateData.name ??
+    student.name;
+
+  const fatherName =
+    updateData.fatherName ??
+    student.fatherName;
+
+  const motherName =
+    updateData.motherName ??
+    student.motherName;
+
+  const className =
+    updateData.className ??
+    student.className;
+
+  const admissionNo =
+    updateData.admissionNo ??
+    student.admissionNo;
+
+  const existingStudent =
+    await studentRepository.findByAdmissionNo(
+      admissionNo,
+      name,
+      fatherName,
+      motherName,
+      className
     );
 
-  if (!student) {
+  if (
+    existingStudent &&
+    existingStudent._id.toString() !==
+      student._id.toString()
+  ) {
     throw new Error(
-      "Student not found"
+      "Another student with same details already exists"
     );
   }
 
   // ===================================================
-  // Calculate Latest Due
+  // Update User
   // ===================================================
 
-  const dueFee =
-    calculateDueFee(student);
+  updateData.updatedBy = userId;
 
   // ===================================================
-  // Update Due Fee In MongoDB
+  // Update Student
   // ===================================================
 
-  await studentRepository.updateDueFee(
-    student._id,
-    dueFee
-  );
+  const updatedStudent =
+    await studentRepository.updateStudent(
+      id,
+      updateData
+    );
 
-  // Update API response
-  student.dueFee = dueFee;
+  if (!updatedStudent) {
+    throw new Error(
+      "Student update failed"
+    );
+  }
 
-  return student;
+  return updatedStudent;
 };
 
 // =====================================================
 // Delete Student
+// ADMIN ONLY
 // =====================================================
 
-const deleteStudent = async (id) => {
+const deleteStudent = async (
+  id,
+  userId
+) => {
   const student =
+    await studentRepository.getStudentById(id);
+
+  if (!student) {
+    throw new Error(
+      "Student not found"
+    );
+  }
+
+  const deletedStudent =
     await studentRepository.deleteStudent(
       id
+    );
+
+  if (!deletedStudent) {
+    throw new Error(
+      "Student delete failed"
+    );
+  }
+
+  return deletedStudent;
+};
+
+// =====================================================
+// Search Student For Payment
+// PUBLIC
+// =====================================================
+//
+// Student can search using:
+// 1. Student ID
+// 2. Mobile Number
+//
+// Only payment-related information is returned.
+// =====================================================
+
+const searchStudent = async (search) => {
+  if (
+    !search ||
+    typeof search !== "string" ||
+    !search.trim()
+  ) {
+    throw new Error(
+      "Student ID or mobile number is required"
+    );
+  }
+
+  const cleanSearch =
+    search.trim();
+
+  const student =
+    await studentRepository.searchStudent(
+      cleanSearch
     );
 
   if (!student) {
@@ -457,7 +515,56 @@ const deleteStudent = async (id) => {
     );
   }
 
-  return;
+  // ===================================================
+  // Inactive Student Cannot Make Payment
+  // ===================================================
+
+  if (student.status !== "ACTIVE") {
+    throw new Error(
+      "Student account is inactive"
+    );
+  }
+
+  // ===================================================
+  // Public Response
+  // ===================================================
+  //
+  // Do NOT expose:
+  // - mobile
+  // - email
+  // - address
+  // - dob
+  // - createdBy
+  // - updatedBy
+  // - internal MongoDB fields
+  //
+  // ===================================================
+
+  return {
+    studentId:
+      student.studentId,
+
+    name:
+      student.name,
+
+    fatherName:
+      student.fatherName,
+
+    className:
+      student.className,
+
+    section:
+      student.section,
+
+    monthlyFee:
+      Number(student.monthlyFee || 0),
+
+    dueFee:
+      Number(student.dueFee || 0),
+
+    status:
+      student.status,
+  };
 };
 
 // =====================================================
@@ -466,10 +573,16 @@ const deleteStudent = async (id) => {
 
 module.exports = {
   createStudent,
+
   getAllStudents,
+
   getStudentById,
-  searchStudent,
+
   updateStudent,
+
   deleteStudent,
-  calculateDueFee,
+
+  searchStudent,
+
+  calculateFeeStartDate,
 };
