@@ -1,11 +1,6 @@
-const studentRepository =
-  require("../repositories/student.repository");
+const studentRepository = require("../repositories/student.repository");
 
-const feeStructureRepository =
-  require("../repositories/feeStructure.repository");
-
-const generateStudentId =
-  require("../utils/generateStudentId");
+const generateStudentId = require("../utils/generateStudentId");
 
 // =====================================================
 // Fee Fields
@@ -23,7 +18,7 @@ const FEE_FIELDS = [
 ];
 
 // =====================================================
-// Get Fee Value
+// Validate Fee Value
 // =====================================================
 
 const getFeeValue = (value) => {
@@ -45,15 +40,19 @@ const getFeeValue = (value) => {
 };
 
 // =====================================================
-// Calculate Fee Heads Total
+// Calculate Fee Total
 // =====================================================
+//
+// Only 8 fee heads are included here.
+// Opening due is added separately.
+//
 
-const calculateFeeHeadsTotal = (data) => {
+const calculateFeeHeadsTotal = (feeData) => {
   return FEE_FIELDS.reduce(
     (total, field) => {
       return (
         total +
-        Number(data[field] || 0)
+        Number(feeData[field] || 0)
       );
     },
     0
@@ -61,74 +60,80 @@ const calculateFeeHeadsTotal = (data) => {
 };
 
 // =====================================================
-// Calculate Student Total Fee
+// Get Fee Data From Request
 // =====================================================
 //
-// Total Fee:
+// Create Student:
 //
-// All Fee Heads + Opening Due
+// If fee field is not sent,
+// its value will be 0.
 //
-// =====================================================
-
-const calculateStudentTotalFee = (
-  data
-) => {
-  const feeHeadsTotal =
-    calculateFeeHeadsTotal(data);
-
-  const openingDue =
-    Number(data.openingDue || 0);
-
-  return (
-    feeHeadsTotal +
-    openingDue
-  );
-};
-
-// =====================================================
-// Calculate Due Fee
-// =====================================================
+// Example:
 //
-// Due = Total Fee - Paid Fee
+// {
+//   admissionFee: 2000,
+//   monthlyFee: 1500
+// }
 //
-// Due kabhi negative nahi hoga.
+// Remaining fee heads = 0
 //
 
-const calculateDueFee = (
-  totalFee,
-  paidFee
-) => {
-  return Math.max(
-    Number(totalFee || 0) -
-      Number(paidFee || 0),
-    0
-  );
-};
-
-// =====================================================
-// Build Student Fee Data
-// =====================================================
-//
-// Create ke time agar fee field nahi diya gaya
-// to 0 consider hoga.
-//
-
-const buildCreateFeeData = (
-  body
-) => {
+const buildFeeData = (data) => {
   const feeData = {};
 
   for (const field of FEE_FIELDS) {
     feeData[field] =
-      getFeeValue(body[field]);
+      data[field] !== undefined
+        ? getFeeValue(data[field])
+        : 0;
   }
 
-  feeData.openingDue =
-    getFeeValue(
-      body.openingDue
+  return feeData;
+};
+
+// =====================================================
+// Calculate Student Fee
+// =====================================================
+//
+// totalFee
+// = all fee heads + openingDue
+//
+// dueFee
+// = totalFee - paidFee
+//
+// paidFee is normally 0 when creating student.
+//
+
+const calculateStudentFee = ({
+  feeData,
+  openingDue = 0,
+  paidFee = 0,
+}) => {
+  const feeHeadsTotal =
+    calculateFeeHeadsTotal(
+      feeData
     );
 
-  return feeData;
+  const safeOpeningDue =
+    getFeeValue(openingDue);
+
+  const safePaidFee =
+    getFeeValue(paidFee);
+
+  const totalFee =
+    feeHeadsTotal +
+    safeOpeningDue;
+
+  const dueFee = Math.max(
+    totalFee - safePaidFee,
+    0
+  );
+
+  return {
+    totalFee,
+    paidFee: safePaidFee,
+    dueFee,
+  };
 };
 
 // =====================================================
@@ -139,7 +144,7 @@ const calculateFeeStartDate = (
   admissionDate
 ) => {
   const date = new Date(
-    admissionDate || Date.now()
+    admissionDate
   );
 
   // ===================================================
@@ -155,9 +160,10 @@ const calculateFeeStartDate = (
 
   // ===================================================
   // PRODUCTION MODE
+  // ===================================================
   //
   // Fee starts from admission date.
-  // ===================================================
+  //
 
   return date;
 };
@@ -167,7 +173,7 @@ const calculateFeeStartDate = (
 // =====================================================
 
 const createStudent = async (
-  body,
+  data,
   userId
 ) => {
   // ===================================================
@@ -175,22 +181,22 @@ const createStudent = async (
   // ===================================================
 
   const name =
-    body.name?.trim();
+    data.name?.trim();
 
   const fatherName =
-    body.fatherName?.trim();
+    data.fatherName?.trim();
 
   const motherName =
-    body.motherName?.trim() || "";
+    data.motherName?.trim() || "";
 
   const className =
-    body.className?.trim();
+    data.className?.trim();
 
   const admissionNo =
-    body.admissionNo?.trim();
+    data.admissionNo?.trim() || "";
 
   // ===================================================
-  // Basic Validation
+  // Required Validation
   // ===================================================
 
   if (!name) {
@@ -215,28 +221,29 @@ const createStudent = async (
   // Duplicate Student Check
   // ===================================================
 
-  const duplicate =
-    await studentRepository.findByAdmissionNo(
-      admissionNo,
-      name,
-      fatherName,
-      motherName,
-      className
-    );
+  const existing =
+    await studentRepository
+      .findByAdmissionNo(
+        admissionNo,
+        name,
+        fatherName,
+        motherName,
+        className
+      );
 
-  if (duplicate) {
+  if (existing) {
     if (
       admissionNo &&
-      duplicate.admissionNo ===
+      existing.admissionNo ===
         admissionNo
     ) {
       throw new Error(
-        `Student with admission number ${admissionNo} already exists`
+        "Student with this admission number already exists"
       );
     }
 
     throw new Error(
-      "Student with same name, father name, mother name and class already exists"
+      "Student already exists with same name, father name, mother name and class"
     );
   }
 
@@ -248,46 +255,12 @@ const createStudent = async (
     await generateStudentId();
 
   // ===================================================
-  // Fee Data
-  // ===================================================
-
-  const feeData =
-    buildCreateFeeData(body);
-
-  // ===================================================
-  // Calculate Total Fee
-  // ===================================================
-
-  const totalFee =
-    calculateStudentTotalFee(
-      feeData
-    );
-
-  // ===================================================
-  // New Student Paid Fee
-  // ===================================================
-
-  const paidFee = 0;
-
-  // ===================================================
-  // Calculate Due
-  // ===================================================
-
-  const dueFee =
-    calculateDueFee(
-      totalFee,
-      paidFee
-    );
-
-  // ===================================================
   // Admission Date
   // ===================================================
 
   const admissionDate =
-    body.admissionDate
-      ? new Date(
-          body.admissionDate
-        )
+    data.admissionDate
+      ? new Date(data.admissionDate)
       : new Date();
 
   // ===================================================
@@ -300,109 +273,203 @@ const createStudent = async (
     );
 
   // ===================================================
-  // Create Student
+  // Build Fee Heads
+  // ===================================================
+  //
+  // IMPORTANT:
+  //
+  // Create Student API se jo fee values
+  // aayengi wahi save hongi.
+  //
+  // FeeStructure ko automatically override
+  // nahi kiya ja raha.
+  //
+
+  const feeData =
+    buildFeeData(data);
+
+  // ===================================================
+  // Opening Due
+  // ===================================================
+
+  const openingDue =
+    data.openingDue !== undefined
+      ? getFeeValue(
+          data.openingDue
+        )
+      : 0;
+
+  // ===================================================
+  // Paid Fee
+  // ===================================================
+  //
+  // Normally create student par 0.
+  //
+  // Direct paidFee ko allow karna ho to
+  // validator/service policy ke according
+  // change kiya ja sakta hai.
+  //
+
+  const paidFee = 0;
+
+  // ===================================================
+  // Calculate Total + Due
+  // ===================================================
+
+  const calculatedFee =
+    calculateStudentFee({
+      feeData,
+      openingDue,
+      paidFee,
+    });
+
+  // ===================================================
+  // Create Student Data
+  // ===================================================
+
+  const studentData = {
+    // ===============================
+    // Student ID
+    // ===============================
+
+    studentId,
+
+    // ===============================
+    // Basic Information
+    // ===============================
+
+    admissionNo,
+
+    name,
+
+    fatherName,
+
+    motherName,
+
+    mobile:
+      data.mobile?.trim(),
+
+    email:
+      data.email?.trim() || "",
+
+    gender:
+      data.gender,
+
+    dob:
+      data.dob
+        ? new Date(data.dob)
+        : undefined,
+
+    className,
+
+    section:
+      data.section?.trim() || "",
+
+    address:
+      data.address?.trim() || "",
+
+    // ===============================
+    // Admission Information
+    // ===============================
+
+    admissionDate,
+
+    feeStartDate,
+
+    // ===============================
+    // Fee Heads
+    // ===============================
+
+    admissionFee:
+      feeData.admissionFee,
+
+    monthlyFee:
+      feeData.monthlyFee,
+
+    examFee:
+      feeData.examFee,
+
+    sportFee:
+      feeData.sportFee,
+
+    computerFee:
+      feeData.computerFee,
+
+    functionFee:
+      feeData.functionFee,
+
+    smartClassFee:
+      feeData.smartClassFee,
+
+    otherCharges:
+      feeData.otherCharges,
+
+    // ===============================
+    // Fee Calculation
+    // ===============================
+
+    openingDue,
+
+    totalFee:
+      calculatedFee.totalFee,
+
+    paidFee:
+      calculatedFee.paidFee,
+
+    dueFee:
+      calculatedFee.dueFee,
+
+    // ===============================
+    // Status
+    // ===============================
+
+    status:
+      data.status || "ACTIVE",
+
+    isDeleted: false,
+
+    // ===============================
+    // User Tracking
+    // ===============================
+
+    createdBy: userId,
+
+    updatedBy: userId,
+  };
+
+  // ===================================================
+  // Create
   // ===================================================
 
   const student =
-    await studentRepository.createStudent(
-      {
-        studentId,
-
-        admissionNo,
-
-        name,
-
-        fatherName,
-
-        motherName,
-
-        mobile:
-          body.mobile?.trim(),
-
-        email:
-          body.email?.trim() || "",
-
-        gender:
-          body.gender,
-
-        dob:
-          body.dob
-            ? new Date(body.dob)
-            : undefined,
-
-        className,
-
-        section:
-          body.section?.trim() || "",
-
-        address:
-          body.address?.trim() || "",
-
-        admissionDate,
-
-        // =============================================
-        // Fee Heads
-        // =============================================
-
-        admissionFee:
-          feeData.admissionFee,
-
-        monthlyFee:
-          feeData.monthlyFee,
-
-        examFee:
-          feeData.examFee,
-
-        sportFee:
-          feeData.sportFee,
-
-        computerFee:
-          feeData.computerFee,
-
-        functionFee:
-          feeData.functionFee,
-
-        smartClassFee:
-          feeData.smartClassFee,
-
-        otherCharges:
-          feeData.otherCharges,
-
-        // =============================================
-        // Fee Summary
-        // =============================================
-
-        openingDue:
-          feeData.openingDue,
-
-        totalFee,
-
-        paidFee,
-
-        dueFee,
-
-        feeStartDate,
-
-        // =============================================
-        // Status
-        // =============================================
-
-        status: "ACTIVE",
-
-        isDeleted: false,
-
-        // =============================================
-        // User
-        // =============================================
-
-        createdBy: userId,
-
-        updatedBy: userId,
-      }
-    );
+    await studentRepository
+      .createStudent(
+        studentData
+      );
 
   return student;
 };
+
+// =====================================================
+// Get Student By Student ID
+// =====================================================
+
+const getStudentByStudentId =
+  async (studentId) => {
+    const student =
+      await studentRepository
+        .findByStudentId(
+          studentId
+        );
+
+    if (!student) {
+      throw new Error(
+        "Student not found"
+      );
+    }
+
+    return student;
+  };
 
 // =====================================================
 // Get All Students
@@ -414,7 +481,7 @@ const getAllStudents = async () => {
 };
 
 // =====================================================
-// Get Student By ID
+// Get Student By Mongo ID
 // =====================================================
 
 const getStudentById = async (
@@ -437,23 +504,18 @@ const getStudentById = async (
 // Update Student
 // =====================================================
 //
-// Student information + fee heads update.
+// Student basic information + individual fee heads
+// can be updated.
 //
-// IMPORTANT:
+// paidFee / dueFee direct update nahi hoga.
 //
-// paidFee direct update allowed nahi hai.
+// Fee fields update hone par:
+// totalFee + dueFee automatically recalculate honge.
 //
-// Fee change hone par:
-//
-// totalFee = fee heads + openingDue
-//
-// dueFee = totalFee - existing paidFee
-//
-// =====================================================
 
 const updateStudent = async (
   id,
-  body,
+  data,
   userId
 ) => {
   // ===================================================
@@ -471,186 +533,203 @@ const updateStudent = async (
   }
 
   // ===================================================
-  // Duplicate Check
-  // ===================================================
-
-  const newName =
-    body.name !== undefined
-      ? body.name.trim()
-      : existing.name;
-
-  const newFatherName =
-    body.fatherName !== undefined
-      ? body.fatherName.trim()
-      : existing.fatherName;
-
-  const newMotherName =
-    body.motherName !== undefined
-      ? body.motherName.trim()
-      : existing.motherName || "";
-
-  const newClassName =
-    body.className !== undefined
-      ? body.className.trim()
-      : existing.className;
-
-  const newAdmissionNo =
-    body.admissionNo !== undefined
-      ? body.admissionNo.trim()
-      : existing.admissionNo;
-
-  // ===================================================
-  // Check Duplicate
-  // ===================================================
-
-  const duplicate =
-    await studentRepository.findByAdmissionNo(
-      newAdmissionNo,
-      newName,
-      newFatherName,
-      newMotherName,
-      newClassName
-    );
-
-  if (
-    duplicate &&
-    duplicate._id.toString() !==
-      existing._id.toString()
-  ) {
-    throw new Error(
-      "Another student with same details already exists"
-    );
-  }
-
-  // ===================================================
-  // Prepare Update Data
+  // Basic Update Data
   // ===================================================
 
   const updateData = {};
 
   // ===================================================
-  // Basic Fields
+  // Admission Number
   // ===================================================
 
   if (
-    body.admissionNo !== undefined
+    data.admissionNo !==
+    undefined
   ) {
     updateData.admissionNo =
-      newAdmissionNo;
+      data.admissionNo
+        ?.trim() || "";
   }
 
+  // ===================================================
+  // Name
+  // ===================================================
+
   if (
-    body.name !== undefined
+    data.name !== undefined
   ) {
     updateData.name =
-      newName;
+      data.name.trim();
   }
 
+  // ===================================================
+  // Father Name
+  // ===================================================
+
   if (
-    body.fatherName !== undefined
+    data.fatherName !==
+    undefined
   ) {
     updateData.fatherName =
-      newFatherName;
+      data.fatherName.trim();
   }
 
+  // ===================================================
+  // Mother Name
+  // ===================================================
+
   if (
-    body.motherName !== undefined
+    data.motherName !==
+    undefined
   ) {
     updateData.motherName =
-      newMotherName;
+      data.motherName
+        ?.trim() || "";
   }
 
+  // ===================================================
+  // Mobile
+  // ===================================================
+
   if (
-    body.mobile !== undefined
+    data.mobile !== undefined
   ) {
     updateData.mobile =
-      body.mobile.trim();
+      data.mobile.trim();
   }
 
+  // ===================================================
+  // Email
+  // ===================================================
+
   if (
-    body.email !== undefined
+    data.email !== undefined
   ) {
     updateData.email =
-      body.email.trim();
+      data.email?.trim() || "";
   }
 
+  // ===================================================
+  // Gender
+  // ===================================================
+
   if (
-    body.gender !== undefined
+    data.gender !== undefined
   ) {
     updateData.gender =
-      body.gender;
+      data.gender;
   }
 
+  // ===================================================
+  // DOB
+  // ===================================================
+
   if (
-    body.dob !== undefined
+    data.dob !== undefined
   ) {
     updateData.dob =
-      body.dob
-        ? new Date(body.dob)
+      data.dob
+        ? new Date(data.dob)
         : undefined;
   }
 
+  // ===================================================
+  // Class
+  // ===================================================
+
   if (
-    body.className !== undefined
+    data.className !==
+    undefined
   ) {
     updateData.className =
-      newClassName;
+      data.className.trim();
   }
 
+  // ===================================================
+  // Section
+  // ===================================================
+
   if (
-    body.section !== undefined
+    data.section !== undefined
   ) {
     updateData.section =
-      body.section.trim();
+      data.section?.trim() || "";
   }
 
+  // ===================================================
+  // Address
+  // ===================================================
+
   if (
-    body.address !== undefined
+    data.address !== undefined
   ) {
     updateData.address =
-      body.address.trim();
+      data.address?.trim() || "";
   }
+
+  // ===================================================
+  // Admission Date
+  // ===================================================
 
   if (
-    body.admissionDate !== undefined
+    data.admissionDate !==
+    undefined
   ) {
-    updateData.admissionDate =
+    const admissionDate =
       new Date(
-        body.admissionDate
+        data.admissionDate
       );
 
+    updateData.admissionDate =
+      admissionDate;
+
+    // Fee start date is updated
+    // along with admission date.
     updateData.feeStartDate =
       calculateFeeStartDate(
-        updateData.admissionDate
+        admissionDate
       );
   }
 
   // ===================================================
-  // Current Fee Values
+  // Status
   // ===================================================
 
-  const currentFeeData = {};
-
-  for (const field of FEE_FIELDS) {
-    currentFeeData[field] =
-      Number(
-        existing[field] || 0
-      );
+  if (
+    data.status !== undefined
+  ) {
+    updateData.status =
+      data.status;
   }
 
   // ===================================================
-  // Update Fee Heads
-  // ===================================================
+  // Fee Fields
+  // =====================================================
+  //
+  // Only sent fee heads are updated.
+  //
+  // Example:
+  //
+  // {
+  //   monthlyFee: 1800
+  // }
+  //
+  // Only monthlyFee changes.
+  // Remaining fee heads stay unchanged.
+  //
 
   let feeChanged = false;
 
-  for (const field of FEE_FIELDS) {
+  for (
+    const field of FEE_FIELDS
+  ) {
     if (
-      body[field] !== undefined
+      data[field] !==
+      undefined
     ) {
-      currentFeeData[field] =
+      updateData[field] =
         getFeeValue(
-          body[field]
+          data[field]
         );
 
       feeChanged = true;
@@ -658,66 +737,106 @@ const updateStudent = async (
   }
 
   // ===================================================
-  // Opening Due
-  // ===================================================
-
-  let openingDue =
-    Number(
-      existing.openingDue || 0
-    );
-
-  if (
-    body.openingDue !== undefined
-  ) {
-    openingDue =
-      getFeeValue(
-        body.openingDue
-      );
-
-    feeChanged = true;
-  }
-
-  // ===================================================
   // Recalculate Fee
   // ===================================================
 
   if (feeChanged) {
-    const totalFee =
-      calculateStudentTotalFee({
-        ...currentFeeData,
-        openingDue,
-      });
+    const feeData = {};
+
+    for (
+      const field of FEE_FIELDS
+    ) {
+      feeData[field] =
+        updateData[field] !==
+        undefined
+          ? Number(
+              updateData[field]
+            )
+          : Number(
+              existing[field] ||
+                0
+            );
+    }
+
+    const openingDue =
+      data.openingDue !==
+      undefined
+        ? getFeeValue(
+            data.openingDue
+          )
+        : Number(
+            existing.openingDue ||
+              0
+          );
 
     const paidFee =
       Number(
         existing.paidFee || 0
       );
 
-    const dueFee =
-      calculateDueFee(
-        totalFee,
-        paidFee
-      );
-
-    // ================================================
-    // Set Fee Heads
-    // ================================================
-
-    for (
-      const field of FEE_FIELDS
-    ) {
-      updateData[field] =
-        currentFeeData[field];
-    }
+    const calculatedFee =
+      calculateStudentFee({
+        feeData,
+        openingDue,
+        paidFee,
+      });
 
     updateData.openingDue =
       openingDue;
 
     updateData.totalFee =
-      totalFee;
+      calculatedFee.totalFee;
 
     updateData.dueFee =
-      dueFee;
+      calculatedFee.dueFee;
+  }
+
+  // ===================================================
+  // Opening Due Only Update
+  // ===================================================
+
+  if (
+    data.openingDue !==
+      undefined &&
+    !feeChanged
+  ) {
+    const openingDue =
+      getFeeValue(
+        data.openingDue
+      );
+
+    const feeData = {};
+
+    for (
+      const field of FEE_FIELDS
+    ) {
+      feeData[field] =
+        Number(
+          existing[field] ||
+            0
+        );
+    }
+
+    const paidFee =
+      Number(
+        existing.paidFee || 0
+      );
+
+    const calculatedFee =
+      calculateStudentFee({
+        feeData,
+        openingDue,
+        paidFee,
+      });
+
+    updateData.openingDue =
+      openingDue;
+
+    updateData.totalFee =
+      calculatedFee.totalFee;
+
+    updateData.dueFee =
+      calculatedFee.dueFee;
   }
 
   // ===================================================
@@ -765,17 +884,17 @@ const deleteStudent = async (
     );
   }
 
-  const deleted =
+  const deletedStudent =
     await studentRepository
       .deleteStudent(id);
 
-  if (!deleted) {
+  if (!deletedStudent) {
     throw new Error(
       "Student delete failed"
     );
   }
 
-  return deleted;
+  return deletedStudent;
 };
 
 // =====================================================
@@ -785,10 +904,8 @@ const deleteStudent = async (
 // Public fee payment page.
 //
 // Search by:
-// 1. Student ID
-// 2. Mobile
+// Student ID / Mobile
 //
-// =====================================================
 
 const searchStudent = async (
   search
@@ -818,15 +935,12 @@ const searchStudent = async (
 };
 
 // =====================================================
-// Update Fee After Payment
+// Update Paid Fee + Due Fee
 // =====================================================
 //
-// IMPORTANT:
+// Used ONLY by fee collection/payment flow.
 //
-// This function should ONLY be used
-// from fee collection/payment flow.
-//
-// paidFee and dueFee are updated together.
+// Do not use this for fee structure changes.
 //
 
 const updateFee = async (
@@ -844,26 +958,22 @@ const updateFee = async (
     );
   }
 
-  const newPaidFee =
+  const safePaidFee =
     getFeeValue(paidFee);
 
-  const newDueFee =
+  const safeDueFee =
     getFeeValue(dueFee);
 
   return await studentRepository
     .updateFee(
       id,
-      newPaidFee,
-      newDueFee
+      safePaidFee,
+      safeDueFee
     );
 };
 
 // =====================================================
 // Update Due Fee
-// =====================================================
-//
-// Internal use only.
-//
 // =====================================================
 
 const updateDueFee = async (
@@ -880,13 +990,13 @@ const updateDueFee = async (
     );
   }
 
-  const newDueFee =
+  const safeDueFee =
     getFeeValue(dueFee);
 
   return await studentRepository
     .updateDueFee(
       id,
-      newDueFee
+      safeDueFee
     );
 };
 
@@ -894,38 +1004,40 @@ const updateDueFee = async (
 // Get Students By Class
 // =====================================================
 
-const getStudentsByClass = async (
-  className
-) => {
-  if (
-    !className ||
-    !className.trim()
-  ) {
-    throw new Error(
-      "Class name is required"
-    );
-  }
+const getStudentsByClass =
+  async (className) => {
+    if (
+      !className ||
+      !className.trim()
+    ) {
+      throw new Error(
+        "Class name is required"
+      );
+    }
 
-  return await studentRepository
-    .getStudentsByClass(
-      className.trim()
-    );
-};
+    return await studentRepository
+      .getStudentsByClass(
+        className.trim()
+      );
+  };
 
 // =====================================================
-// Apply Fee Structure To Class
+// Update All Students Fee By Class
 // =====================================================
 //
-// FeeStructure se class ke all students
-// ki fee update karega.
+// Used by FeeStructure.
+//
+// Class ke saare ACTIVE students ke
+// fee heads update honge.
 //
 // Existing paidFee preserve rahega.
+// Existing openingDue preserve rahega.
 //
-// =====================================================
 
-const applyFeeStructureToClass =
+const updateStudentsFeeByClass =
   async (
     className,
+    feeData,
     userId
   ) => {
     if (
@@ -937,69 +1049,34 @@ const applyFeeStructureToClass =
       );
     }
 
-    // =================================================
-    // Get Fee Structure
-    // =================================================
-
-    const feeStructure =
-      await feeStructureRepository
-        .getFeeStructureByClass(
-          className.trim()
-        );
-
-    if (!feeStructure) {
-      throw new Error(
-        `Fee structure for class ${className} not found`
+    const completeFeeData =
+      buildFeeData(
+        feeData
       );
-    }
 
-    // =================================================
-    // Fee Data
-    // =================================================
-
-    const feeData = {};
-
-    for (
-      const field of FEE_FIELDS
-    ) {
-      feeData[field] =
-        Number(
-          feeStructure[field] || 0
-        );
-    }
-
-    // =================================================
-    // Update Students
-    // =================================================
-
-    const students =
-      await studentRepository
-        .updateStudentsFeeByClass(
-          className.trim(),
-          feeData,
-          userId
-        );
-
-    return {
-      className:
+    return await studentRepository
+      .updateStudentsFeeByClass(
         className.trim(),
-
-      feeStructure,
-
-      studentsUpdated:
-        students.length,
-
-      students,
-    };
+        completeFeeData,
+        userId
+      );
   };
 
 // =====================================================
 // Update Individual Student Fees
 // =====================================================
 //
-// Selected student ki fee update.
+// Used by FeeStructure / Admin.
 //
-// =====================================================
+// Example:
+//
+// {
+//   monthlyFee: 1200,
+//   examFee: 500
+// }
+//
+// Sirf selected student's fee change hogi.
+//
 
 const updateIndividualStudentFees =
   async (
@@ -1016,36 +1093,42 @@ const updateIndividualStudentFees =
       );
     }
 
-    const allowedFeeData = {};
+    const hasFeeField =
+      FEE_FIELDS.some(
+        (field) =>
+          feeData[field] !==
+          undefined
+      );
+
+    if (!hasFeeField) {
+      throw new Error(
+        "At least one fee field is required"
+      );
+    }
+
+    const validatedFeeData =
+      {};
 
     for (
       const field of FEE_FIELDS
     ) {
       if (
-        feeData[field] !== undefined
+        feeData[field] !==
+        undefined
       ) {
-        allowedFeeData[field] =
-          getFeeValue(
-            feeData[field]
-          );
+        validatedFeeData[
+          field
+        ] = getFeeValue(
+          feeData[field]
+        );
       }
-    }
-
-    if (
-      Object.keys(
-        allowedFeeData
-      ).length === 0
-    ) {
-      throw new Error(
-        "At least one fee field is required"
-      );
     }
 
     const student =
       await studentRepository
         .updateIndividualStudentFees(
           studentId.trim(),
-          allowedFeeData,
+          validatedFeeData,
           userId
         );
 
@@ -1080,31 +1163,29 @@ const updateIndividualStudentFees =
 // =====================================================
 
 module.exports = {
+  // Student CRUD
   createStudent,
-
+  getStudentByStudentId,
   getAllStudents,
-
   getStudentById,
-
   updateStudent,
-
   deleteStudent,
 
+  // Public search
   searchStudent,
 
+  // Payment fee
   updateFee,
-
   updateDueFee,
 
+  // Class-wise fee
   getStudentsByClass,
+  updateStudentsFeeByClass,
 
-  applyFeeStructureToClass,
-
+  // Individual fee
   updateIndividualStudentFees,
 
+  // Helpers
   calculateFeeHeadsTotal,
-
-  calculateStudentTotalFee,
-
-  calculateDueFee,
-};
+  calculateStudentFee,
+}; 
