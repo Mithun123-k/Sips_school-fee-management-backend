@@ -13,6 +13,7 @@ const ALLOWED_FEE_HEADS = [
   "FUNCTION",
   "SMART_CLASS",
   "OTHER",
+  "All",
 ];
 
 // =====================================================
@@ -62,7 +63,7 @@ const feeSchema = new mongoose.Schema(
     feeHead: {
       type: String,
       enum: ALLOWED_FEE_HEADS,
-      required: true,
+      // required: true,
       trim: true,
       index: true,
     },
@@ -170,7 +171,7 @@ feeSchema.index({
 
 feeSchema.index({
   student: 1,
-  feeHead: 1,
+  // feeHead: 1,
   paymentStatus: 1,
 });
 
