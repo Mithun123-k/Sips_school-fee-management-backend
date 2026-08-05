@@ -1,12 +1,24 @@
-const studentRepository = require("../repositories/student.repository");
+const studentRepository =
+  require("../repositories/student.repository");
 
-const generateStudentId = require("../utils/generateStudentId");
+const feeRepository =
+  require("../repositories/fee.repository");
+
+const generateStudentId =
+  require("../utils/generateStudentId");
 
 // =====================================================
-// Fee Fields
+// Constants
 // =====================================================
 
-const FEE_FIELDS = [
+const ALLOWED_FEE_DISCOUNT_TYPES = [
+  "NONE",
+  "SIBLING",
+  "RTE",
+  "GIRL",
+];
+
+const FEE_HEADS = [
   "admissionFee",
   "monthlyFee",
   "examFee",
@@ -18,134 +30,35 @@ const FEE_FIELDS = [
 ];
 
 // =====================================================
-// Validate Fee Value
-// =====================================================
-
-const getFeeValue = (value) => {
-  const amount = Number(value ?? 0);
-
-  if (!Number.isFinite(amount)) {
-    throw new Error(
-      "Fee amount must be a valid number"
-    );
-  }
-
-  if (amount < 0) {
-    throw new Error(
-      "Fee amount cannot be negative"
-    );
-  }
-
-  return amount;
-};
-
-// =====================================================
-// Calculate Fee Total
-// =====================================================
-//
-// Only 8 fee heads are included here.
-// Opening due is added separately.
-//
-
-const calculateFeeHeadsTotal = (feeData) => {
-  return FEE_FIELDS.reduce(
-    (total, field) => {
-      return (
-        total +
-        Number(feeData[field] || 0)
-      );
-    },
-    0
-  );
-};
-
-// =====================================================
-// Get Fee Data From Request
-// =====================================================
-//
-// Create Student:
-//
-// If fee field is not sent,
-// its value will be 0.
-//
-// Example:
-//
-// {
-//   admissionFee: 2000,
-//   monthlyFee: 1500
-// }
-//
-// Remaining fee heads = 0
-//
-
-const buildFeeData = (data) => {
-  const feeData = {};
-
-  for (const field of FEE_FIELDS) {
-    feeData[field] =
-      data[field] !== undefined
-        ? getFeeValue(data[field])
-        : 0;
-  }
-
-  return feeData;
-};
-
-// =====================================================
-// Calculate Student Fee
-// =====================================================
-//
-// totalFee
-// = all fee heads + openingDue
-//
-// dueFee
-// = totalFee - paidFee
-//
-// paidFee is normally 0 when creating student.
-//
-
-const calculateStudentFee = ({
-  feeData,
-  openingDue = 0,
-  paidFee = 0,
-}) => {
-  const feeHeadsTotal =
-    calculateFeeHeadsTotal(
-      feeData
-    );
-
-  const safeOpeningDue =
-    getFeeValue(openingDue);
-
-  const safePaidFee =
-    getFeeValue(paidFee);
-
-  const totalFee =
-    feeHeadsTotal +
-    safeOpeningDue;
-
-  const dueFee = Math.max(
-    totalFee - safePaidFee,
-    0
-  );
-
-  return {
-    totalFee,
-    paidFee: safePaidFee,
-    dueFee,
-  };
-};
-
-// =====================================================
 // Calculate Fee Start Date
+// =====================================================
+//
+// Production:
+//
+// Admission Date = 15 July
+// Fee Start Date  = 01 August
+//
+// Test Mode:
+//
+// 1 minute = 1 month
+//
 // =====================================================
 
 const calculateFeeStartDate = (
   admissionDate
 ) => {
-  const date = new Date(
-    admissionDate
-  );
+  const date =
+    new Date(admissionDate);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    throw new Error(
+      "Invalid admission date"
+    );
+  }
 
   // ===================================================
   // TEST MODE
@@ -161,80 +74,991 @@ const calculateFeeStartDate = (
   // ===================================================
   // PRODUCTION MODE
   // ===================================================
-  //
-  // Fee starts from admission date.
-  //
 
-  return date;
+  return new Date(
+    date.getFullYear(),
+    date.getMonth() + 1,
+    1
+  );
 };
 
 // =====================================================
+// Validate Fee Discount Type
+// =====================================================
+
+const validateFeeDiscountType = (
+  feeDiscountType
+) => {
+  const finalDiscountType =
+    feeDiscountType || "NONE";
+
+  if (
+    !ALLOWED_FEE_DISCOUNT_TYPES.includes(
+      finalDiscountType
+    )
+  ) {
+    throw new Error(
+      "Invalid fee discount type"
+    );
+  }
+
+  return finalDiscountType;
+};
+
+// =====================================================
+// Normalize Fee Value
+// =====================================================
+
+const normalizeFeeValue = (
+  value,
+  fieldName
+) => {
+  const amount =
+    Number(value || 0);
+
+  if (
+    !Number.isFinite(amount) ||
+    amount < 0
+  ) {
+    throw new Error(
+      `${fieldName} must be a valid non-negative number`
+    );
+  }
+
+  return amount;
+};
+
+// =====================================================
+// Validate All Fee Heads
+// =====================================================
+
+const validateFeeHeads = ({
+  admissionFee = 0,
+  monthlyFee = 0,
+  examFee = 0,
+  sportFee = 0,
+  computerFee = 0,
+  functionFee = 0,
+  smartClassFee = 0,
+  otherCharges = 0,
+}) => {
+  return {
+    admissionFee:
+      normalizeFeeValue(
+        admissionFee,
+        "Admission fee"
+      ),
+
+    monthlyFee:
+      normalizeFeeValue(
+        monthlyFee,
+        "Monthly fee"
+      ),
+
+    examFee:
+      normalizeFeeValue(
+        examFee,
+        "Exam fee"
+      ),
+
+    sportFee:
+      normalizeFeeValue(
+        sportFee,
+        "Sport fee"
+      ),
+
+    computerFee:
+      normalizeFeeValue(
+        computerFee,
+        "Computer fee"
+      ),
+
+    functionFee:
+      normalizeFeeValue(
+        functionFee,
+        "Function fee"
+      ),
+
+    smartClassFee:
+      normalizeFeeValue(
+        smartClassFee,
+        "Smart class fee"
+      ),
+
+    otherCharges:
+      normalizeFeeValue(
+        otherCharges,
+        "Other charges"
+      ),
+  };
+};
+
+// =====================================================
+// Calculate Discounted Fee Heads
+// =====================================================
+//
+// SIBLING:
+// Monthly Fee = 80%
+//
+// RTE:
+// All fee heads = 0
+//
+// GIRL:
+// Admission Fee = 50%
+//
+// =====================================================
+
+const calculateDiscountedFeeHeads = (
+  feeHeads,
+  feeDiscountType
+) => {
+  const finalDiscountType =
+    validateFeeDiscountType(
+      feeDiscountType
+    );
+
+  const {
+    admissionFee,
+    monthlyFee,
+    examFee,
+    sportFee,
+    computerFee,
+    functionFee,
+    smartClassFee,
+    otherCharges,
+  } = feeHeads;
+
+  switch (
+    finalDiscountType
+  ) {
+    // =================================================
+    // SIBLING
+    // =================================================
+
+    case "SIBLING":
+      return {
+        admissionFee,
+
+        monthlyFee:
+          monthlyFee * 0.8,
+
+        examFee,
+
+        sportFee,
+
+        computerFee,
+
+        functionFee,
+
+        smartClassFee,
+
+        otherCharges,
+      };
+
+    // =================================================
+    // RTE
+    // =================================================
+
+    case "RTE":
+      return {
+        admissionFee: 0,
+
+        monthlyFee: 0,
+
+        examFee: 0,
+
+        sportFee: 0,
+
+        computerFee: 0,
+
+        functionFee: 0,
+
+        smartClassFee: 0,
+
+        otherCharges: 0,
+      };
+
+    // =================================================
+    // GIRL
+    // =================================================
+
+    case "GIRL":
+      return {
+        admissionFee:
+          admissionFee * 0.5,
+
+        monthlyFee,
+
+        examFee,
+
+        sportFee,
+
+        computerFee,
+
+        functionFee,
+
+        smartClassFee,
+
+        otherCharges,
+      };
+
+    // =================================================
+    // NONE
+    // =================================================
+
+    case "NONE":
+    default:
+      return {
+        admissionFee,
+
+        monthlyFee,
+
+        examFee,
+
+        sportFee,
+
+        computerFee,
+
+        functionFee,
+
+        smartClassFee,
+
+        otherCharges,
+      };
+  }
+};
+
+// =====================================================
+// Calculate Effective Fee Total
+// =====================================================
+
+const calculateEffectiveFeeTotal = (
+  feeHeads,
+  feeDiscountType
+) => {
+  const discountedFees =
+    calculateDiscountedFeeHeads(
+      feeHeads,
+      feeDiscountType
+    );
+
+  return (
+    discountedFees.admissionFee +
+    discountedFees.monthlyFee +
+    discountedFees.examFee +
+    discountedFees.sportFee +
+    discountedFees.computerFee +
+    discountedFees.functionFee +
+    discountedFees.smartClassFee +
+    discountedFees.otherCharges
+  );
+};
+
+// =====================================================
+// Calculate Total Fee
+// =====================================================
+
+const calculateTotalFee = (
+  feeHeads,
+  openingDue,
+  feeDiscountType
+) => {
+  const discountedFeeTotal =
+    calculateEffectiveFeeTotal(
+      feeHeads,
+      feeDiscountType
+    );
+
+  const finalOpeningDue =
+    normalizeFeeValue(
+      openingDue,
+      "Opening due"
+    );
+
+  return (
+    discountedFeeTotal +
+    finalOpeningDue
+  );
+};
+
+// =====================================================
+// Get Effective Monthly Fee
+// =====================================================
+
+const getEffectiveMonthlyFee = (
+  student
+) => {
+  const discountType =
+    validateFeeDiscountType(
+      student.feeDiscountType
+    );
+
+  const monthlyFee =
+    normalizeFeeValue(
+      student.monthlyFee,
+      "Monthly fee"
+    );
+
+  switch (
+    discountType
+  ) {
+    case "SIBLING":
+      return monthlyFee * 0.8;
+
+    case "RTE":
+      return 0;
+
+    case "GIRL":
+      return monthlyFee;
+
+    case "NONE":
+    default:
+      return monthlyFee;
+  }
+};
+
+// =====================================================
+// Get Effective One-Time Fees
+// =====================================================
+
+const getEffectiveOneTimeFees = (
+  student
+) => {
+  const feeHeads = {
+    admissionFee:
+      normalizeFeeValue(
+        student.admissionFee,
+        "Admission fee"
+      ),
+
+    monthlyFee:
+      normalizeFeeValue(
+        student.monthlyFee,
+        "Monthly fee"
+      ),
+
+    examFee:
+      normalizeFeeValue(
+        student.examFee,
+        "Exam fee"
+      ),
+
+    sportFee:
+      normalizeFeeValue(
+        student.sportFee,
+        "Sport fee"
+      ),
+
+    computerFee:
+      normalizeFeeValue(
+        student.computerFee,
+        "Computer fee"
+      ),
+
+    functionFee:
+      normalizeFeeValue(
+        student.functionFee,
+        "Function fee"
+      ),
+
+    smartClassFee:
+      normalizeFeeValue(
+        student.smartClassFee,
+        "Smart class fee"
+      ),
+
+    otherCharges:
+      normalizeFeeValue(
+        student.otherCharges,
+        "Other charges"
+      ),
+  };
+
+  const discounted =
+    calculateDiscountedFeeHeads(
+      feeHeads,
+      student.feeDiscountType
+    );
+
+  return (
+    discounted.admissionFee +
+    discounted.examFee +
+    discounted.sportFee +
+    discounted.computerFee +
+    discounted.functionFee +
+    discounted.smartClassFee +
+    discounted.otherCharges
+  );
+};
+
+// =====================================================
+// Calculate Accrued Months
+// =====================================================
+
+const calculateAccruedMonths = (
+  feeStartDate,
+  currentDate = new Date()
+) => {
+  const start =
+    new Date(feeStartDate);
+
+  const current =
+    new Date(currentDate);
+
+  if (
+    Number.isNaN(
+      start.getTime()
+    )
+  ) {
+    return 0;
+  }
+
+  if (
+    Number.isNaN(
+      current.getTime()
+    )
+  ) {
+    throw new Error(
+      "Invalid current date"
+    );
+  }
+
+  // ===================================================
+  // TEST MODE
+  // 1 minute = 1 month
+  // ===================================================
+
+  if (
+    process.env.TEST_FEE_MODE ===
+    "true"
+  ) {
+    const elapsedMilliseconds =
+      current.getTime() -
+      start.getTime();
+
+    if (
+      elapsedMilliseconds <= 0
+    ) {
+      return 1;
+    }
+
+    const elapsedMinutes =
+      Math.floor(
+        elapsedMilliseconds /
+          (60 * 1000)
+      );
+
+    return (
+      Math.max(
+        elapsedMinutes,
+        0
+      ) + 1
+    );
+  }
+
+  // ===================================================
+  // Production Mode
+  // ===================================================
+
+  const startYear =
+    start.getFullYear();
+
+  const startMonth =
+    start.getMonth();
+
+  const currentYear =
+    current.getFullYear();
+
+  const currentMonth =
+    current.getMonth();
+
+  if (
+    current <
+    new Date(
+      startYear,
+      startMonth,
+      1
+    )
+  ) {
+    return 0;
+  }
+
+  return (
+    (currentYear - startYear) *
+      12 +
+    (currentMonth -
+      startMonth) +
+    1
+  );
+};
+
+// =====================================================
+// Get Academic Year End Date
+// =====================================================
+//
+// Example:
+//
+// Fee Start = August 2026
+// Academic Year End = March 31, 2027
+//
+// Fee Start = January 2027
+// Academic Year End = March 31, 2027
+//
+// Fee Start = April 2027
+// Academic Year End = March 31, 2028
+//
+// =====================================================
+
+const getAcademicYearEndDate = (
+  feeStartDate
+) => {
+  const start =
+    new Date(feeStartDate);
+
+  if (
+    Number.isNaN(
+      start.getTime()
+    )
+  ) {
+    return null;
+  }
+
+  const startMonth =
+    start.getMonth();
+
+  const startYear =
+    start.getFullYear();
+
+  // ===================================================
+  // April to December
+  // Academic year ends next year March
+  // ===================================================
+
+  if (
+    startMonth >= 3
+  ) {
+    return new Date(
+      startYear + 1,
+      2,
+      31,
+      23,
+      59,
+      59,
+      999
+    );
+  }
+
+  // ===================================================
+  // January to March
+  // Academic year ends same year March
+  // ===================================================
+
+  return new Date(
+    startYear,
+    2,
+    31,
+    23,
+    59,
+    59,
+    999
+  );
+};
+
+// =====================================================
+// Check Successful Lump Sum Payment
+// =====================================================
+//
+// IMPORTANT:
+//
+// If at least one successful LUMP_SUM payment exists,
+// future monthly fee will NOT be generated for the
+// remaining months of the current academic year.
+//
+// Example:
+//
+// Monthly Fee = ₹1500
+//
+// Student pays complete LUMP_SUM amount.
+//
+// Then:
+//
+// Current month due = normal
+// Future months      = ₹0
+// Until March        = ₹0
+//
+// =====================================================
+
+const hasActiveLumpSumPayment = async (
+  student,
+  currentDate = new Date()
+) => {
+  if (!student) {
+    return false;
+  }
+
+  // ===================================================
+  // TEST MODE
+  // ===================================================
+  //
+  // In test mode we still check actual successful
+  // lump-sum payment records.
+  //
+
+  const payments =
+    await feeRepository.getLumpSumPayments(
+      student.studentId
+    );
+
+  if (
+    !Array.isArray(payments) ||
+    payments.length === 0
+  ) {
+    return false;
+  }
+
+  const academicYearEnd =
+    getAcademicYearEndDate(
+      student.feeStartDate ||
+        student.admissionDate
+    );
+
+  if (!academicYearEnd) {
+    return false;
+  }
+
+  const current =
+    new Date(currentDate);
+
+  // ===================================================
+  // If academic year is already over,
+  // old lump-sum payment should not affect
+  // next academic year.
+  // ===================================================
+
+  if (
+    current >
+    academicYearEnd
+  ) {
+    return false;
+  }
+
+  // ===================================================
+  // Find valid lump-sum payment
+  // ===================================================
+
+  return payments.some(
+    (payment) => {
+      const paymentDate =
+        new Date(
+          payment.paymentDate ||
+            payment.createdAt
+        );
+
+      if (
+        Number.isNaN(
+          paymentDate.getTime()
+        )
+      ) {
+        return false;
+      }
+
+      // Payment must belong to current
+      // academic year.
+
+      return (
+        paymentDate <=
+        current &&
+        paymentDate <=
+        academicYearEnd
+      );
+    }
+  );
+};
+
+// =====================================================
+// Calculate Current Due Fee
+// =====================================================
+//
+// Normal:
+//
+// Opening Due
+// +
+// One-Time Fees
+// +
+// Accrued Monthly Fees
+// -
+// Paid Fee
+//
+// Lump Sum:
+//
+// After successful LUMP_SUM payment:
+//
+// Opening Due
+// +
+// One-Time Fees
+// +
+// Already accrued monthly fees
+// -
+// Paid Fee
+//
+// Future monthly fees = 0
+//
+// =====================================================
+
+const calculateCurrentDueFee = async (
+  student,
+  currentDate = new Date()
+) => {
+  const discountType =
+    validateFeeDiscountType(
+      student.feeDiscountType
+    );
+
+  const openingDue =
+    normalizeFeeValue(
+      student.openingDue,
+      "Opening due"
+    );
+
+  const paidFee =
+    normalizeFeeValue(
+      student.paidFee,
+      "Paid fee"
+    );
+
+  // ===================================================
+  // RTE
+  // ===================================================
+
+  if (
+    discountType === "RTE"
+  ) {
+    return Math.max(
+      openingDue -
+        paidFee,
+      0
+    );
+  }
+
+  // ===================================================
+  // One-Time Fees
+  // ===================================================
+
+  const oneTimeFees =
+    getEffectiveOneTimeFees(
+      student
+    );
+
+  // ===================================================
+  // Monthly Fee
+  // ===================================================
+
+  const monthlyFee =
+    getEffectiveMonthlyFee(
+      student
+    );
+
+  // ===================================================
+  // Accrued Months
+  // ===================================================
+
+  const accruedMonths =
+    student.feeStartDate
+      ? calculateAccruedMonths(
+          student.feeStartDate,
+          currentDate
+        )
+      : 0;
+
+  // ===================================================
+  // Check Lump Sum
+  // ===================================================
+
+  const lumpSumPaid =
+    await hasActiveLumpSumPayment(
+      student,
+      currentDate
+    );
+
+  // ===================================================
+  // Monthly Fee Calculation
+  // ===================================================
+
+  let accruedMonthlyFee = 0;
+
+  if (
+    lumpSumPaid
+  ) {
+    // ===============================================
+    // IMPORTANT
+    //
+    // Successful lump-sum payment means future
+    // monthly fees are already covered.
+    //
+    // We do NOT generate additional monthly fees.
+    //
+    // ===============================================
+
+    accruedMonthlyFee =
+      0;
+  } else {
+    accruedMonthlyFee =
+      monthlyFee *
+      accruedMonths;
+  }
+
+  // ===================================================
+  // Total Earned Fee
+  // ===================================================
+
+  const totalEarnedFee =
+    openingDue +
+    oneTimeFees +
+    accruedMonthlyFee;
+
+  // ===================================================
+  // Current Due
+  // ===================================================
+
+  return Math.max(
+    totalEarnedFee -
+      paidFee,
+    0
+  );
+};
+
+// =====================================================
+// Update Dynamic Due Fee
+// =====================================================
+
+const refreshStudentDueFee = async (
+  student,
+  currentDate = new Date()
+) => {
+  const dueFee =
+    await calculateCurrentDueFee(
+      student,
+      currentDate
+    );
+
+  const currentDue =
+    Number(
+      student.dueFee || 0
+    );
+
+  if (
+    Number(
+      currentDue.toFixed(2)
+    ) ===
+    Number(
+      dueFee.toFixed(2)
+    )
+  ) {
+    return student;
+  }
+
+  const updatedStudent =
+    await studentRepository.updateFee(
+      student._id,
+      Number(
+        student.paidFee || 0
+      ),
+      dueFee
+    );
+
+  return (
+    updatedStudent ||
+    student
+  );
+};
+
+// =====================================================
+// Get Student By Student ID
+// =====================================================
+
+const getActiveStudentByStudentId =
+  async (
+    studentId
+  ) => {
+    const student =
+      await studentRepository.findByStudentId(
+        studentId
+      );
+
+    if (!student) {
+      throw new Error(
+        "Student not found"
+      );
+    }
+
+    if (
+      student.status !==
+      "ACTIVE"
+    ) {
+      throw new Error(
+        "Student is not active"
+      );
+    }
+
+    return student;
+  };
+
+// =====================================================
 // Create Student
+// ADMIN ONLY
 // =====================================================
 
 const createStudent = async (
-  data,
+  body,
   userId
 ) => {
+  const {
+    admissionNo,
+    name,
+    fatherName,
+    motherName,
+    mobile,
+    email,
+    gender,
+    dob,
+    className,
+    section,
+    address,
+    admissionDate,
+
+    admissionFee,
+    monthlyFee,
+    examFee,
+    sportFee,
+    computerFee,
+    functionFee,
+    smartClassFee,
+    otherCharges,
+
+    openingDue,
+
+    feeDiscountType,
+  } = body;
+
   // ===================================================
-  // Basic Values
+  // Duplicate Check
   // ===================================================
 
-  const name =
-    data.name?.trim();
-
-  const fatherName =
-    data.fatherName?.trim();
-
-  const motherName =
-    data.motherName?.trim() || "";
-
-  const className =
-    data.className?.trim();
-
-  const admissionNo =
-    data.admissionNo?.trim() || "";
-
-  // ===================================================
-  // Required Validation
-  // ===================================================
-
-  if (!name) {
-    throw new Error(
-      "Student name is required"
+  const existingStudent =
+    await studentRepository.findByAdmissionNo(
+      admissionNo,
+      name,
+      fatherName,
+      motherName,
+      className
     );
-  }
 
-  if (!fatherName) {
-    throw new Error(
-      "Father name is required"
-    );
-  }
-
-  if (!className) {
-    throw new Error(
-      "Class is required"
-    );
-  }
-
-  // ===================================================
-  // Duplicate Student Check
-  // ===================================================
-
-  const existing =
-    await studentRepository
-      .findByAdmissionNo(
-        admissionNo,
-        name,
-        fatherName,
-        motherName,
-        className
-      );
-
-  if (existing) {
+  if (
+    existingStudent
+  ) {
     if (
       admissionNo &&
-      existing.admissionNo ===
+      existingStudent.admissionNo ===
         admissionNo
     ) {
       throw new Error(
@@ -243,7 +1067,7 @@ const createStudent = async (
     }
 
     throw new Error(
-      "Student already exists with same name, father name, mother name and class"
+      "Student with same name, father name, mother name and class already exists"
     );
   }
 
@@ -258,10 +1082,79 @@ const createStudent = async (
   // Admission Date
   // ===================================================
 
-  const admissionDate =
-    data.admissionDate
-      ? new Date(data.admissionDate)
+  const finalAdmissionDate =
+    admissionDate
+      ? new Date(admissionDate)
       : new Date();
+
+  if (
+    Number.isNaN(
+      finalAdmissionDate.getTime()
+    )
+  ) {
+    throw new Error(
+      "Invalid admission date"
+    );
+  }
+
+  // ===================================================
+  // Discount Type
+  // ===================================================
+
+  const finalFeeDiscountType =
+    validateFeeDiscountType(
+      feeDiscountType
+    );
+
+  // ===================================================
+  // Fee Heads
+  // ===================================================
+
+  const feeHeads =
+    validateFeeHeads({
+      admissionFee,
+      monthlyFee,
+      examFee,
+      sportFee,
+      computerFee,
+      functionFee,
+      smartClassFee,
+      otherCharges,
+    });
+
+  // ===================================================
+  // Opening Due
+  // ===================================================
+
+  const finalOpeningDue =
+    normalizeFeeValue(
+      openingDue,
+      "Opening due"
+    );
+
+  // ===================================================
+  // Total Fee
+  // ===================================================
+
+  const totalFee =
+    calculateTotalFee(
+      feeHeads,
+      finalOpeningDue,
+      finalFeeDiscountType
+    );
+
+  // ===================================================
+  // Initial Paid
+  // ===================================================
+
+  const paidFee = 0;
+
+  // ===================================================
+  // Initial Due
+  // ===================================================
+
+  const dueFee =
+    finalOpeningDue;
 
   // ===================================================
   // Fee Start Date
@@ -269,231 +1162,161 @@ const createStudent = async (
 
   const feeStartDate =
     calculateFeeStartDate(
-      admissionDate
+      finalAdmissionDate
     );
 
   // ===================================================
-  // Build Fee Heads
-  // ===================================================
-  //
-  // IMPORTANT:
-  //
-  // Create Student API se jo fee values
-  // aayengi wahi save hongi.
-  //
-  // FeeStructure ko automatically override
-  // nahi kiya ja raha.
-  //
-
-  const feeData =
-    buildFeeData(data);
-
-  // ===================================================
-  // Opening Due
-  // ===================================================
-
-  const openingDue =
-    data.openingDue !== undefined
-      ? getFeeValue(
-          data.openingDue
-        )
-      : 0;
-
-  // ===================================================
-  // Paid Fee
-  // ===================================================
-  //
-  // Normally create student par 0.
-  //
-  // Direct paidFee ko allow karna ho to
-  // validator/service policy ke according
-  // change kiya ja sakta hai.
-  //
-
-  const paidFee = 0;
-
-  // ===================================================
-  // Calculate Total + Due
-  // ===================================================
-
-  const calculatedFee =
-    calculateStudentFee({
-      feeData,
-      openingDue,
-      paidFee,
-    });
-
-  // ===================================================
-  // Create Student Data
-  // ===================================================
-
-  const studentData = {
-    // ===============================
-    // Student ID
-    // ===============================
-
-    studentId,
-
-    // ===============================
-    // Basic Information
-    // ===============================
-
-    admissionNo,
-
-    name,
-
-    fatherName,
-
-    motherName,
-
-    mobile:
-      data.mobile?.trim(),
-
-    email:
-      data.email?.trim() || "",
-
-    gender:
-      data.gender,
-
-    dob:
-      data.dob
-        ? new Date(data.dob)
-        : undefined,
-
-    className,
-
-    section:
-      data.section?.trim() || "",
-
-    address:
-      data.address?.trim() || "",
-
-    // ===============================
-    // Admission Information
-    // ===============================
-
-    admissionDate,
-
-    feeStartDate,
-
-    // ===============================
-    // Fee Heads
-    // ===============================
-
-    admissionFee:
-      feeData.admissionFee,
-
-    monthlyFee:
-      feeData.monthlyFee,
-
-    examFee:
-      feeData.examFee,
-
-    sportFee:
-      feeData.sportFee,
-
-    computerFee:
-      feeData.computerFee,
-
-    functionFee:
-      feeData.functionFee,
-
-    smartClassFee:
-      feeData.smartClassFee,
-
-    otherCharges:
-      feeData.otherCharges,
-
-    // ===============================
-    // Fee Calculation
-    // ===============================
-
-    openingDue,
-
-    totalFee:
-      calculatedFee.totalFee,
-
-    paidFee:
-      calculatedFee.paidFee,
-
-    dueFee:
-      calculatedFee.dueFee,
-
-    // ===============================
-    // Status
-    // ===============================
-
-    status:
-      data.status || "ACTIVE",
-
-    isDeleted: false,
-
-    // ===============================
-    // User Tracking
-    // ===============================
-
-    createdBy: userId,
-
-    updatedBy: userId,
-  };
-
-  // ===================================================
-  // Create
+  // Create Student
   // ===================================================
 
   const student =
-    await studentRepository
-      .createStudent(
-        studentData
-      );
+    await studentRepository.createStudent({
+      studentId,
+
+      admissionNo:
+        admissionNo || "",
+
+      name,
+
+      fatherName,
+
+      motherName:
+        motherName || "",
+
+      mobile,
+
+      email:
+        email || "",
+
+      gender,
+
+      dob:
+        dob || null,
+
+      className,
+
+      section:
+        section || "",
+
+      address:
+        address || "",
+
+      admissionDate:
+        finalAdmissionDate,
+
+      feeDiscountType:
+        finalFeeDiscountType,
+
+      admissionFee:
+        feeHeads.admissionFee,
+
+      monthlyFee:
+        feeHeads.monthlyFee,
+
+      examFee:
+        feeHeads.examFee,
+
+      sportFee:
+        feeHeads.sportFee,
+
+      computerFee:
+        feeHeads.computerFee,
+
+      functionFee:
+        feeHeads.functionFee,
+
+      smartClassFee:
+        feeHeads.smartClassFee,
+
+      otherCharges:
+        feeHeads.otherCharges,
+
+      openingDue:
+        finalOpeningDue,
+
+      totalFee,
+
+      paidFee,
+
+      dueFee,
+
+      feeStartDate,
+
+      status:
+        "ACTIVE",
+
+      isDeleted:
+        false,
+
+      createdBy:
+        userId,
+
+      updatedBy:
+        userId,
+    });
 
   return student;
 };
-
-// =====================================================
-// Get Student By Student ID
-// =====================================================
-
-const getStudentByStudentId =
-  async (studentId) => {
-    const student =
-      await studentRepository
-        .findByStudentId(
-          studentId
-        );
-
-    if (!student) {
-      throw new Error(
-        "Student not found"
-      );
-    }
-
-    return student;
-  };
 
 // =====================================================
 // Get All Students
 // =====================================================
 
 const getAllStudents = async () => {
-  return await studentRepository
-    .getAllStudents();
+  const students =
+    await studentRepository.getAllStudents();
+
+  if (
+    !Array.isArray(students)
+  ) {
+    return [];
+  }
+
+  const updatedStudents =
+    await Promise.all(
+      students.map(
+        async (student) => {
+          if (
+            student.status !==
+            "ACTIVE"
+          ) {
+            return student;
+          }
+
+          return await refreshStudentDueFee(
+            student
+          );
+        }
+      )
+    );
+
+  return updatedStudents;
 };
 
 // =====================================================
-// Get Student By Mongo ID
+// Get Student By ID
 // =====================================================
 
 const getStudentById = async (
   id
 ) => {
   const student =
-    await studentRepository
-      .getStudentById(id);
+    await studentRepository.getStudentById(
+      id
+    );
 
   if (!student) {
     throw new Error(
       "Student not found"
+    );
+  }
+
+  if (
+    student.status ===
+    "ACTIVE"
+  ) {
+    return await refreshStudentDueFee(
+      student
     );
   }
 
@@ -502,169 +1325,59 @@ const getStudentById = async (
 
 // =====================================================
 // Update Student
+// ADMIN ONLY
 // =====================================================
-//
-// Student basic information + individual fee heads
-// can be updated.
-//
-// paidFee / dueFee direct update nahi hoga.
-//
-// Fee fields update hone par:
-// totalFee + dueFee automatically recalculate honge.
-//
 
 const updateStudent = async (
   id,
-  data,
+  body,
   userId
 ) => {
-  // ===================================================
-  // Existing Student
-  // ===================================================
+  const student =
+    await studentRepository.getStudentById(
+      id
+    );
 
-  const existing =
-    await studentRepository
-      .getStudentById(id);
-
-  if (!existing) {
+  if (!student) {
     throw new Error(
       "Student not found"
     );
   }
 
   // ===================================================
-  // Basic Update Data
+  // Protected Fields
   // ===================================================
 
-  const updateData = {};
+  const {
+    paidFee,
+    dueFee,
+    totalFee,
+    studentId,
+    isDeleted,
+    createdBy,
+    ...updateData
+  } = body;
+
+  delete updateData.paidFee;
+  delete updateData.dueFee;
+  delete updateData.totalFee;
+  delete updateData.openingDue;
+  delete updateData.studentId;
+  delete updateData.isDeleted;
+  delete updateData.createdBy;
 
   // ===================================================
-  // Admission Number
+  // Discount Validation
   // ===================================================
 
   if (
-    data.admissionNo !==
+    updateData.feeDiscountType !==
     undefined
   ) {
-    updateData.admissionNo =
-      data.admissionNo
-        ?.trim() || "";
-  }
-
-  // ===================================================
-  // Name
-  // ===================================================
-
-  if (
-    data.name !== undefined
-  ) {
-    updateData.name =
-      data.name.trim();
-  }
-
-  // ===================================================
-  // Father Name
-  // ===================================================
-
-  if (
-    data.fatherName !==
-    undefined
-  ) {
-    updateData.fatherName =
-      data.fatherName.trim();
-  }
-
-  // ===================================================
-  // Mother Name
-  // ===================================================
-
-  if (
-    data.motherName !==
-    undefined
-  ) {
-    updateData.motherName =
-      data.motherName
-        ?.trim() || "";
-  }
-
-  // ===================================================
-  // Mobile
-  // ===================================================
-
-  if (
-    data.mobile !== undefined
-  ) {
-    updateData.mobile =
-      data.mobile.trim();
-  }
-
-  // ===================================================
-  // Email
-  // ===================================================
-
-  if (
-    data.email !== undefined
-  ) {
-    updateData.email =
-      data.email?.trim() || "";
-  }
-
-  // ===================================================
-  // Gender
-  // ===================================================
-
-  if (
-    data.gender !== undefined
-  ) {
-    updateData.gender =
-      data.gender;
-  }
-
-  // ===================================================
-  // DOB
-  // ===================================================
-
-  if (
-    data.dob !== undefined
-  ) {
-    updateData.dob =
-      data.dob
-        ? new Date(data.dob)
-        : undefined;
-  }
-
-  // ===================================================
-  // Class
-  // ===================================================
-
-  if (
-    data.className !==
-    undefined
-  ) {
-    updateData.className =
-      data.className.trim();
-  }
-
-  // ===================================================
-  // Section
-  // ===================================================
-
-  if (
-    data.section !== undefined
-  ) {
-    updateData.section =
-      data.section?.trim() || "";
-  }
-
-  // ===================================================
-  // Address
-  // ===================================================
-
-  if (
-    data.address !== undefined
-  ) {
-    updateData.address =
-      data.address?.trim() || "";
+    updateData.feeDiscountType =
+      validateFeeDiscountType(
+        updateData.feeDiscountType
+      );
   }
 
   // ===================================================
@@ -672,171 +1385,251 @@ const updateStudent = async (
   // ===================================================
 
   if (
-    data.admissionDate !==
+    updateData.admissionDate !==
     undefined
   ) {
-    const admissionDate =
+    const newAdmissionDate =
       new Date(
-        data.admissionDate
+        updateData.admissionDate
       );
+
+    if (
+      Number.isNaN(
+        newAdmissionDate.getTime()
+      )
+    ) {
+      throw new Error(
+        "Invalid admission date"
+      );
+    }
 
     updateData.admissionDate =
-      admissionDate;
+      newAdmissionDate;
 
-    // Fee start date is updated
-    // along with admission date.
     updateData.feeStartDate =
       calculateFeeStartDate(
-        admissionDate
+        newAdmissionDate
       );
   }
 
   // ===================================================
-  // Status
+  // Current Fee Heads
   // ===================================================
 
-  if (
-    data.status !== undefined
-  ) {
-    updateData.status =
-      data.status;
-  }
+  const currentFeeHeads = {
+    admissionFee:
+      Number(
+        student.admissionFee || 0
+      ),
+
+    monthlyFee:
+      Number(
+        student.monthlyFee || 0
+      ),
+
+    examFee:
+      Number(
+        student.examFee || 0
+      ),
+
+    sportFee:
+      Number(
+        student.sportFee || 0
+      ),
+
+    computerFee:
+      Number(
+        student.computerFee || 0
+      ),
+
+    functionFee:
+      Number(
+        student.functionFee || 0
+      ),
+
+    smartClassFee:
+      Number(
+        student.smartClassFee || 0
+      ),
+
+    otherCharges:
+      Number(
+        student.otherCharges || 0
+      ),
+  };
 
   // ===================================================
-  // Fee Fields
-  // =====================================================
-  //
-  // Only sent fee heads are updated.
-  //
-  // Example:
-  //
-  // {
-  //   monthlyFee: 1800
-  // }
-  //
-  // Only monthlyFee changes.
-  // Remaining fee heads stay unchanged.
-  //
-
-  let feeChanged = false;
-
-  for (
-    const field of FEE_FIELDS
-  ) {
-    if (
-      data[field] !==
-      undefined
-    ) {
-      updateData[field] =
-        getFeeValue(
-          data[field]
-        );
-
-      feeChanged = true;
-    }
-  }
-
-  // ===================================================
-  // Recalculate Fee
+  // Check Fee Fields Updated
   // ===================================================
 
-  if (feeChanged) {
-    const feeData = {};
-
-    for (
-      const field of FEE_FIELDS
-    ) {
-      feeData[field] =
+  const feeFieldsUpdated =
+    FEE_HEADS.some(
+      (field) =>
         updateData[field] !==
         undefined
-          ? Number(
-              updateData[field]
-            )
-          : Number(
-              existing[field] ||
-                0
-            );
-    }
-
-    const openingDue =
-      data.openingDue !==
-      undefined
-        ? getFeeValue(
-            data.openingDue
-          )
-        : Number(
-            existing.openingDue ||
-              0
-          );
-
-    const paidFee =
-      Number(
-        existing.paidFee || 0
-      );
-
-    const calculatedFee =
-      calculateStudentFee({
-        feeData,
-        openingDue,
-        paidFee,
-      });
-
-    updateData.openingDue =
-      openingDue;
-
-    updateData.totalFee =
-      calculatedFee.totalFee;
-
-    updateData.dueFee =
-      calculatedFee.dueFee;
-  }
+    );
 
   // ===================================================
-  // Opening Due Only Update
+  // Updated Fee Heads
+  // ===================================================
+
+  const updatedFeeHeads =
+    validateFeeHeads({
+      admissionFee:
+        updateData.admissionFee !==
+        undefined
+          ? updateData.admissionFee
+          : currentFeeHeads.admissionFee,
+
+      monthlyFee:
+        updateData.monthlyFee !==
+        undefined
+          ? updateData.monthlyFee
+          : currentFeeHeads.monthlyFee,
+
+      examFee:
+        updateData.examFee !==
+        undefined
+          ? updateData.examFee
+          : currentFeeHeads.examFee,
+
+      sportFee:
+        updateData.sportFee !==
+        undefined
+          ? updateData.sportFee
+          : currentFeeHeads.sportFee,
+
+      computerFee:
+        updateData.computerFee !==
+        undefined
+          ? updateData.computerFee
+          : currentFeeHeads.computerFee,
+
+      functionFee:
+        updateData.functionFee !==
+        undefined
+          ? updateData.functionFee
+          : currentFeeHeads.functionFee,
+
+      smartClassFee:
+        updateData.smartClassFee !==
+        undefined
+          ? updateData.smartClassFee
+          : currentFeeHeads.smartClassFee,
+
+      otherCharges:
+        updateData.otherCharges !==
+        undefined
+          ? updateData.otherCharges
+          : currentFeeHeads.otherCharges,
+    });
+
+  // ===================================================
+  // Save Updated Fee Heads
   // ===================================================
 
   if (
-    data.openingDue !==
-      undefined &&
-    !feeChanged
+    feeFieldsUpdated
   ) {
-    const openingDue =
-      getFeeValue(
-        data.openingDue
-      );
+    updateData.admissionFee =
+      updatedFeeHeads.admissionFee;
 
-    const feeData = {};
+    updateData.monthlyFee =
+      updatedFeeHeads.monthlyFee;
 
-    for (
-      const field of FEE_FIELDS
-    ) {
-      feeData[field] =
-        Number(
-          existing[field] ||
-            0
-        );
-    }
+    updateData.examFee =
+      updatedFeeHeads.examFee;
 
-    const paidFee =
+    updateData.sportFee =
+      updatedFeeHeads.sportFee;
+
+    updateData.computerFee =
+      updatedFeeHeads.computerFee;
+
+    updateData.functionFee =
+      updatedFeeHeads.functionFee;
+
+    updateData.smartClassFee =
+      updatedFeeHeads.smartClassFee;
+
+    updateData.otherCharges =
+      updatedFeeHeads.otherCharges;
+  }
+
+  // ===================================================
+  // Final Discount Type
+  // ===================================================
+
+  const finalDiscountType =
+    updateData.feeDiscountType !==
+    undefined
+      ? updateData.feeDiscountType
+      : student.feeDiscountType ||
+        "NONE";
+
+  // ===================================================
+  // Recalculate Total Fee
+  // ===================================================
+
+  if (
+    feeFieldsUpdated ||
+    updateData.feeDiscountType !==
+      undefined
+  ) {
+    const finalOpeningDue =
       Number(
-        existing.paidFee || 0
+        student.openingDue || 0
       );
-
-    const calculatedFee =
-      calculateStudentFee({
-        feeData,
-        openingDue,
-        paidFee,
-      });
-
-    updateData.openingDue =
-      openingDue;
 
     updateData.totalFee =
-      calculatedFee.totalFee;
+      calculateTotalFee(
+        updatedFeeHeads,
+        finalOpeningDue,
+        finalDiscountType
+      );
+  }
 
-    updateData.dueFee =
-      calculatedFee.dueFee;
+  // ===================================================
+  // Duplicate Check
+  // ===================================================
+
+  const name =
+    updateData.name ??
+    student.name;
+
+  const fatherName =
+    updateData.fatherName ??
+    student.fatherName;
+
+  const motherName =
+    updateData.motherName ??
+    student.motherName;
+
+  const className =
+    updateData.className ??
+    student.className;
+
+  const admissionNo =
+    updateData.admissionNo ??
+    student.admissionNo;
+
+  const existingStudent =
+    await studentRepository.findByAdmissionNo(
+      admissionNo,
+      name,
+      fatherName,
+      motherName,
+      className
+    );
+
+  if (
+    existingStudent &&
+    existingStudent._id.toString() !==
+      student._id.toString()
+  ) {
+    throw new Error(
+      "Another student with same details already exists"
+    );
   }
 
   // ===================================================
@@ -851,11 +1644,10 @@ const updateStudent = async (
   // ===================================================
 
   const updatedStudent =
-    await studentRepository
-      .updateStudent(
-        id,
-        updateData
-      );
+    await studentRepository.updateStudent(
+      id,
+      updateData
+    );
 
   if (!updatedStudent) {
     throw new Error(
@@ -863,11 +1655,18 @@ const updateStudent = async (
     );
   }
 
-  return updatedStudent;
+  // ===================================================
+  // Refresh Due
+  // ===================================================
+
+  return await refreshStudentDueFee(
+    updatedStudent
+  );
 };
 
 // =====================================================
 // Delete Student
+// ADMIN ONLY
 // =====================================================
 
 const deleteStudent = async (
@@ -875,8 +1674,9 @@ const deleteStudent = async (
   userId
 ) => {
   const student =
-    await studentRepository
-      .getStudentById(id);
+    await studentRepository.getStudentById(
+      id
+    );
 
   if (!student) {
     throw new Error(
@@ -885,8 +1685,9 @@ const deleteStudent = async (
   }
 
   const deletedStudent =
-    await studentRepository
-      .deleteStudent(id);
+    await studentRepository.deleteStudent(
+      id
+    );
 
   if (!deletedStudent) {
     throw new Error(
@@ -898,20 +1699,17 @@ const deleteStudent = async (
 };
 
 // =====================================================
-// Search Student
+// Search Student For Payment
+// PUBLIC
 // =====================================================
-//
-// Public fee payment page.
-//
-// Search by:
-// Student ID / Mobile
-//
 
 const searchStudent = async (
   search
 ) => {
   if (
     !search ||
+    typeof search !==
+      "string" ||
     !search.trim()
   ) {
     throw new Error(
@@ -919,11 +1717,13 @@ const searchStudent = async (
     );
   }
 
+  const cleanSearch =
+    search.trim();
+
   const student =
-    await studentRepository
-      .searchStudent(
-        search.trim()
-      );
+    await studentRepository.searchStudent(
+      cleanSearch
+    );
 
   if (!student) {
     throw new Error(
@@ -931,261 +1731,115 @@ const searchStudent = async (
     );
   }
 
-  return student;
+  if (
+    student.status !==
+    "ACTIVE"
+  ) {
+    throw new Error(
+      "Student account is inactive"
+    );
+  }
+
+  // ===================================================
+  // Refresh Due
+  // ===================================================
+
+  const updatedStudent =
+    await refreshStudentDueFee(
+      student
+    );
+
+  // ===================================================
+  // Public Payment Response
+  // ===================================================
+
+  return {
+    studentId:
+      updatedStudent.studentId,
+
+    name:
+      updatedStudent.name,
+
+    fatherName:
+      updatedStudent.fatherName,
+
+    className:
+      updatedStudent.className,
+
+    section:
+      updatedStudent.section,
+
+    monthlyFee:
+      Number(
+        updatedStudent.monthlyFee ||
+          0
+      ),
+
+    feeDiscountType:
+      updatedStudent.feeDiscountType ||
+      "NONE",
+
+    dueFee:
+      Number(
+        updatedStudent.dueFee ||
+          0
+      ),
+
+    status:
+      updatedStudent.status,
+  };
 };
 
 // =====================================================
-// Update Paid Fee + Due Fee
+// Get Current Due Fee
 // =====================================================
-//
-// Used ONLY by fee collection/payment flow.
-//
-// Do not use this for fee structure changes.
-//
 
-const updateFee = async (
-  id,
-  paidFee,
-  dueFee
+const getCurrentDueFee = async (
+  student
 ) => {
-  const student =
-    await studentRepository
-      .getStudentById(id);
-
-  if (!student) {
-    throw new Error(
-      "Student not found"
-    );
-  }
-
-  const safePaidFee =
-    getFeeValue(paidFee);
-
-  const safeDueFee =
-    getFeeValue(dueFee);
-
-  return await studentRepository
-    .updateFee(
-      id,
-      safePaidFee,
-      safeDueFee
-    );
+  return await calculateCurrentDueFee(
+    student
+  );
 };
-
-// =====================================================
-// Update Due Fee
-// =====================================================
-
-const updateDueFee = async (
-  id,
-  dueFee
-) => {
-  const student =
-    await studentRepository
-      .getStudentById(id);
-
-  if (!student) {
-    throw new Error(
-      "Student not found"
-    );
-  }
-
-  const safeDueFee =
-    getFeeValue(dueFee);
-
-  return await studentRepository
-    .updateDueFee(
-      id,
-      safeDueFee
-    );
-};
-
-// =====================================================
-// Get Students By Class
-// =====================================================
-
-const getStudentsByClass =
-  async (className) => {
-    if (
-      !className ||
-      !className.trim()
-    ) {
-      throw new Error(
-        "Class name is required"
-      );
-    }
-
-    return await studentRepository
-      .getStudentsByClass(
-        className.trim()
-      );
-  };
-
-// =====================================================
-// Update All Students Fee By Class
-// =====================================================
-//
-// Used by FeeStructure.
-//
-// Class ke saare ACTIVE students ke
-// fee heads update honge.
-//
-// Existing paidFee preserve rahega.
-// Existing openingDue preserve rahega.
-//
-
-const updateStudentsFeeByClass =
-  async (
-    className,
-    feeData,
-    userId
-  ) => {
-    if (
-      !className ||
-      !className.trim()
-    ) {
-      throw new Error(
-        "Class name is required"
-      );
-    }
-
-    const completeFeeData =
-      buildFeeData(
-        feeData
-      );
-
-    return await studentRepository
-      .updateStudentsFeeByClass(
-        className.trim(),
-        completeFeeData,
-        userId
-      );
-  };
-
-// =====================================================
-// Update Individual Student Fees
-// =====================================================
-//
-// Used by FeeStructure / Admin.
-//
-// Example:
-//
-// {
-//   monthlyFee: 1200,
-//   examFee: 500
-// }
-//
-// Sirf selected student's fee change hogi.
-//
-
-const updateIndividualStudentFees =
-  async (
-    studentId,
-    feeData,
-    userId
-  ) => {
-    if (
-      !studentId ||
-      !studentId.trim()
-    ) {
-      throw new Error(
-        "Student ID is required"
-      );
-    }
-
-    const hasFeeField =
-      FEE_FIELDS.some(
-        (field) =>
-          feeData[field] !==
-          undefined
-      );
-
-    if (!hasFeeField) {
-      throw new Error(
-        "At least one fee field is required"
-      );
-    }
-
-    const validatedFeeData =
-      {};
-
-    for (
-      const field of FEE_FIELDS
-    ) {
-      if (
-        feeData[field] !==
-        undefined
-      ) {
-        validatedFeeData[
-          field
-        ] = getFeeValue(
-          feeData[field]
-        );
-      }
-    }
-
-    const student =
-      await studentRepository
-        .updateIndividualStudentFees(
-          studentId.trim(),
-          validatedFeeData,
-          userId
-        );
-
-    if (!student) {
-      throw new Error(
-        "Student not found"
-      );
-    }
-
-    return {
-      student,
-
-      totalFee:
-        Number(
-          student.totalFee || 0
-        ),
-
-      paidFee:
-        Number(
-          student.paidFee || 0
-        ),
-
-      dueFee:
-        Number(
-          student.dueFee || 0
-        ),
-    };
-  };
 
 // =====================================================
 // Export
 // =====================================================
 
 module.exports = {
-  // Student CRUD
   createStudent,
-  getStudentByStudentId,
+
   getAllStudents,
+
   getStudentById,
+
   updateStudent,
+
   deleteStudent,
 
-  // Public search
   searchStudent,
 
-  // Payment fee
-  updateFee,
-  updateDueFee,
+  calculateFeeStartDate,
 
-  // Class-wise fee
-  getStudentsByClass,
-  updateStudentsFeeByClass,
+  validateFeeDiscountType,
 
-  // Individual fee
-  updateIndividualStudentFees,
+  calculateDiscountedFeeHeads,
 
-  // Helpers
-  calculateFeeHeadsTotal,
-  calculateStudentFee,
-}; 
+  calculateEffectiveFeeTotal,
+
+  calculateTotalFee,
+
+  getEffectiveMonthlyFee,
+
+  getEffectiveOneTimeFees,
+
+  calculateAccruedMonths,
+
+  getAcademicYearEndDate,
+
+  hasActiveLumpSumPayment,
+
+  calculateCurrentDueFee,
+
+  getCurrentDueFee,
+};

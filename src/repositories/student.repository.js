@@ -1,11 +1,332 @@
 const Student = require("../models/Student");
 
 // =====================================================
+// Allowed Discount Types
+// =====================================================
+
+const ALLOWED_DISCOUNT_TYPES = [
+  "NONE",
+  "SIBLING",
+  "RTE",
+  "GIRL",
+];
+
+// =====================================================
+// Normalize Discount Type
+// =====================================================
+
+const normalizeDiscountType = (
+  feeDiscountType
+) => {
+  const discountType =
+    feeDiscountType || "NONE";
+
+  if (
+    !ALLOWED_DISCOUNT_TYPES.includes(
+      discountType
+    )
+  ) {
+    throw new Error(
+      "Invalid fee discount type"
+    );
+  }
+
+  return discountType;
+};
+
+// =====================================================
+// Normalize Fee Values
+// =====================================================
+
+const normalizeFeeValues = ({
+  admissionFee = 0,
+  monthlyFee = 0,
+  examFee = 0,
+  sportFee = 0,
+  computerFee = 0,
+  functionFee = 0,
+  smartClassFee = 0,
+  otherCharges = 0,
+}) => {
+  const fees = {
+    admissionFee:
+      Number(admissionFee || 0),
+
+    monthlyFee:
+      Number(monthlyFee || 0),
+
+    examFee:
+      Number(examFee || 0),
+
+    sportFee:
+      Number(sportFee || 0),
+
+    computerFee:
+      Number(computerFee || 0),
+
+    functionFee:
+      Number(functionFee || 0),
+
+    smartClassFee:
+      Number(smartClassFee || 0),
+
+    otherCharges:
+      Number(otherCharges || 0),
+  };
+
+  for (
+    const [key, value]
+    of Object.entries(fees)
+  ) {
+    if (
+      !Number.isFinite(value)
+    ) {
+      throw new Error(
+        `${key} must be a valid number`
+      );
+    }
+
+    if (value < 0) {
+      throw new Error(
+        `${key} cannot be negative`
+      );
+    }
+  }
+
+  return fees;
+};
+
+// =====================================================
+// Calculate Discounted Fee Heads
+// =====================================================
+//
+// NONE
+// No discount
+//
+// SIBLING
+// Monthly 20%
+//
+// RTE
+// All 100%
+//
+// GIRL
+// Admission 50%
+//
+// =====================================================
+
+const calculateDiscountedFees = (
+  feeHeads,
+  feeDiscountType = "NONE"
+) => {
+  const originalFees =
+    normalizeFeeValues(
+      feeHeads
+    );
+
+  const discountType =
+    normalizeDiscountType(
+      feeDiscountType
+    );
+
+  switch (discountType) {
+    case "SIBLING":
+      return {
+        admissionFee:
+          originalFees.admissionFee,
+
+        monthlyFee:
+          originalFees.monthlyFee *
+          0.8,
+
+        examFee:
+          originalFees.examFee,
+
+        sportFee:
+          originalFees.sportFee,
+
+        computerFee:
+          originalFees.computerFee,
+
+        functionFee:
+          originalFees.functionFee,
+
+        smartClassFee:
+          originalFees.smartClassFee,
+
+        otherCharges:
+          originalFees.otherCharges,
+      };
+
+    case "RTE":
+      return {
+        admissionFee: 0,
+        monthlyFee: 0,
+        examFee: 0,
+        sportFee: 0,
+        computerFee: 0,
+        functionFee: 0,
+        smartClassFee: 0,
+        otherCharges: 0,
+      };
+
+    case "GIRL":
+      return {
+        admissionFee:
+          originalFees.admissionFee *
+          0.5,
+
+        monthlyFee:
+          originalFees.monthlyFee,
+
+        examFee:
+          originalFees.examFee,
+
+        sportFee:
+          originalFees.sportFee,
+
+        computerFee:
+          originalFees.computerFee,
+
+        functionFee:
+          originalFees.functionFee,
+
+        smartClassFee:
+          originalFees.smartClassFee,
+
+        otherCharges:
+          originalFees.otherCharges,
+      };
+
+    case "NONE":
+    default:
+      return {
+        ...originalFees,
+      };
+  }
+};
+
+// =====================================================
+// Calculate Effective Fee Total
+// =====================================================
+
+const calculateEffectiveFeeTotal = (
+  feeHeads,
+  feeDiscountType = "NONE"
+) => {
+  const discountedFees =
+    calculateDiscountedFees(
+      feeHeads,
+      feeDiscountType
+    );
+
+  const total =
+    discountedFees.admissionFee +
+    discountedFees.monthlyFee +
+    discountedFees.examFee +
+    discountedFees.sportFee +
+    discountedFees.computerFee +
+    discountedFees.functionFee +
+    discountedFees.smartClassFee +
+    discountedFees.otherCharges;
+
+  return Number(
+    total.toFixed(2)
+  );
+};
+
+// =====================================================
+// Calculate Student Total Fee
+// =====================================================
+
+const calculateStudentTotalFee = (
+  feeHeads,
+  openingDue = 0,
+  feeDiscountType = "NONE"
+) => {
+  const effectiveFeeTotal =
+    calculateEffectiveFeeTotal(
+      feeHeads,
+      feeDiscountType
+    );
+
+  const finalOpeningDue =
+    Number(openingDue || 0);
+
+  if (
+    !Number.isFinite(
+      finalOpeningDue
+    ) ||
+    finalOpeningDue < 0
+  ) {
+    throw new Error(
+      "Opening due must be a valid non-negative number"
+    );
+  }
+
+  return Number(
+    Math.max(
+      effectiveFeeTotal +
+        finalOpeningDue,
+      0
+    ).toFixed(2)
+  );
+};
+
+// =====================================================
+// Calculate Due Fee
+// =====================================================
+
+const calculateStudentDueFee = (
+  totalFee,
+  paidFee = 0
+) => {
+  const finalTotalFee =
+    Number(totalFee || 0);
+
+  const finalPaidFee =
+    Number(paidFee || 0);
+
+  if (
+    !Number.isFinite(
+      finalTotalFee
+    ) ||
+    finalTotalFee < 0
+  ) {
+    throw new Error(
+      "Total fee must be a valid non-negative number"
+    );
+  }
+
+  if (
+    !Number.isFinite(
+      finalPaidFee
+    ) ||
+    finalPaidFee < 0
+  ) {
+    throw new Error(
+      "Paid fee must be a valid non-negative number"
+    );
+  }
+
+  return Number(
+    Math.max(
+      finalTotalFee -
+        finalPaidFee,
+      0
+    ).toFixed(2)
+  );
+};
+
+// =====================================================
 // Create Student
 // =====================================================
 
-const createStudent = async (data) => {
-  return await Student.create(data);
+const createStudent = async (
+  data
+) => {
+  return await Student.create(
+    data
+  );
 };
 
 // =====================================================
@@ -21,23 +342,30 @@ const findByAdmissionNo = async (
 ) => {
   const conditions = [];
 
-  // Admission number check
   if (admissionNo) {
     conditions.push({
-      admissionNo: admissionNo.trim(),
+      admissionNo:
+        admissionNo.trim(),
     });
   }
 
-  // Student identity check
   conditions.push({
-    name: name?.trim(),
-    fatherName: fatherName?.trim(),
-    motherName: motherName?.trim() || "",
-    className: className?.trim(),
+    name:
+      name?.trim(),
+
+    fatherName:
+      fatherName?.trim(),
+
+    motherName:
+      motherName?.trim() || "",
+
+    className:
+      className?.trim(),
   });
 
   return await Student.findOne({
     isDeleted: false,
+
     $or: conditions,
   });
 };
@@ -46,9 +374,12 @@ const findByAdmissionNo = async (
 // Find By Student ID
 // =====================================================
 
-const findByStudentId = async (studentId) => {
+const findByStudentId = async (
+  studentId
+) => {
   return await Student.findOne({
     studentId,
+
     isDeleted: false,
   });
 };
@@ -69,9 +400,12 @@ const getAllStudents = async () => {
 // Get Student By Mongo ID
 // =====================================================
 
-const getStudentById = async (id) => {
+const getStudentById = async (
+  id
+) => {
   return await Student.findOne({
     _id: id,
+
     isDeleted: false,
   });
 };
@@ -87,6 +421,7 @@ const updateStudent = async (
   return await Student.findOneAndUpdate(
     {
       _id: id,
+
       isDeleted: false,
     },
     {
@@ -94,6 +429,7 @@ const updateStudent = async (
     },
     {
       new: true,
+
       runValidators: true,
     }
   );
@@ -103,10 +439,13 @@ const updateStudent = async (
 // Soft Delete Student
 // =====================================================
 
-const deleteStudent = async (id) => {
+const deleteStudent = async (
+  id
+) => {
   return await Student.findOneAndUpdate(
     {
       _id: id,
+
       isDeleted: false,
     },
     {
@@ -116,6 +455,7 @@ const deleteStudent = async (id) => {
     },
     {
       new: true,
+
       runValidators: true,
     }
   );
@@ -124,21 +464,16 @@ const deleteStudent = async (id) => {
 // =====================================================
 // Search Student
 // =====================================================
-//
-// Public fee payment page.
-//
-// Search by:
-// 1. Student ID
-// 2. Mobile Number
-//
-// Only ACTIVE students are returned.
-//
 
-const searchStudent = async (search) => {
-  const value = search.trim();
+const searchStudent = async (
+  search
+) => {
+  const value =
+    search.trim();
 
   return await Student.findOne({
     isDeleted: false,
+
     status: "ACTIVE",
 
     $or: [
@@ -155,31 +490,58 @@ const searchStudent = async (search) => {
 // =====================================================
 // Update Paid Fee + Due Fee
 // =====================================================
-//
-// Used after successful payment.
-//
-// DO NOT use this function for changing
-// fee structure.
-//
 
 const updateFee = async (
   id,
   paidFee,
   dueFee
 ) => {
+  const finalPaidFee =
+    Number(paidFee);
+
+  const finalDueFee =
+    Number(dueFee);
+
+  if (
+    !Number.isFinite(
+      finalPaidFee
+    ) ||
+    finalPaidFee < 0
+  ) {
+    throw new Error(
+      "Paid fee must be a valid non-negative number"
+    );
+  }
+
+  if (
+    !Number.isFinite(
+      finalDueFee
+    ) ||
+    finalDueFee < 0
+  ) {
+    throw new Error(
+      "Due fee must be a valid non-negative number"
+    );
+  }
+
   return await Student.findOneAndUpdate(
     {
       _id: id,
+
       isDeleted: false,
     },
     {
       $set: {
-        paidFee: Number(paidFee),
-        dueFee: Number(dueFee),
+        paidFee:
+          finalPaidFee,
+
+        dueFee:
+          finalDueFee,
       },
     },
     {
       new: true,
+
       runValidators: true,
     }
   );
@@ -193,18 +555,35 @@ const updateDueFee = async (
   id,
   dueFee
 ) => {
+  const finalDueFee =
+    Number(dueFee);
+
+  if (
+    !Number.isFinite(
+      finalDueFee
+    ) ||
+    finalDueFee < 0
+  ) {
+    throw new Error(
+      "Due fee must be a valid non-negative number"
+    );
+  }
+
   return await Student.findOneAndUpdate(
     {
       _id: id,
+
       isDeleted: false,
     },
     {
       $set: {
-        dueFee: Number(dueFee),
+        dueFee:
+          finalDueFee,
       },
     },
     {
       new: true,
+
       runValidators: true,
     }
   );
@@ -213,20 +592,13 @@ const updateDueFee = async (
 // =====================================================
 // Get Students By Class
 // =====================================================
-//
-// Used when ADMIN updates fee structure
-// for complete class.
-//
-// Example:
-// Class 5
-// → all Class 5 students
-//
 
 const getStudentsByClass = async (
   className
 ) => {
   return await Student.find({
-    className: className.trim(),
+    className:
+      className.trim(),
 
     isDeleted: false,
 
@@ -237,272 +609,238 @@ const getStudentsByClass = async (
 // =====================================================
 // Update All Students Fee By Class
 // =====================================================
-//
-// Applies class-wise fee structure to
-// every student of that class.
-//
-// IMPORTANT:
-// Existing paidFee is preserved.
-//
-// dueFee is recalculated:
-//
-// totalFee - paidFee
-//
-// OpeningDue is included in total.
-//
 
-const updateStudentsFeeByClass = async (
-  className,
-  feeData,
-  updatedBy
-) => {
-  const {
-    admissionFee,
-    monthlyFee,
-    examFee,
-    sportFee,
-    computerFee,
-    functionFee,
-    smartClassFee,
-    otherCharges,
-  } = feeData;
+const updateStudentsFeeByClass =
+  async (
+    className,
+    feeData,
+    updatedBy
+  ) => {
+    const normalizedFees =
+      normalizeFeeValues({
+        admissionFee:
+          feeData.admissionFee,
 
-  // ===================================================
-  // Calculate New Total Fee
-  // ===================================================
+        monthlyFee:
+          feeData.monthlyFee,
 
-  const feeTotal =
-    Number(admissionFee || 0) +
-    Number(monthlyFee || 0) +
-    Number(examFee || 0) +
-    Number(sportFee || 0) +
-    Number(computerFee || 0) +
-    Number(functionFee || 0) +
-    Number(smartClassFee || 0) +
-    Number(otherCharges || 0);
+        examFee:
+          feeData.examFee,
 
-  // ===================================================
-  // Get Students
-  // ===================================================
+        sportFee:
+          feeData.sportFee,
 
-  const students =
-    await getStudentsByClass(
-      className
-    );
+        computerFee:
+          feeData.computerFee,
 
-  // ===================================================
-  // Update Each Student
-  // ===================================================
+        functionFee:
+          feeData.functionFee,
 
-  const updatedStudents = [];
+        smartClassFee:
+          feeData.smartClassFee,
 
-  for (const student of students) {
-    // Existing paid amount must not be lost
-    const paidFee =
-      Number(student.paidFee || 0);
+        otherCharges:
+          feeData.otherCharges,
+      });
 
-    // Existing opening due must remain
-    const openingDue =
-      Number(student.openingDue || 0);
-
-    // New total
-    const totalFee =
-      feeTotal + openingDue;
-
-    // New due
-    const dueFee =
-      Math.max(
-        totalFee - paidFee,
-        0
+    const students =
+      await getStudentsByClass(
+        className
       );
 
-    const updatedStudent =
-      await Student.findOneAndUpdate(
-        {
-          _id: student._id,
-          isDeleted: false,
-        },
-        {
-          $set: {
-            admissionFee:
-              Number(admissionFee || 0),
+    const updatedStudents = [];
 
-            monthlyFee:
-              Number(monthlyFee || 0),
+    for (
+      const student of students
+    ) {
+      const paidFee =
+        Number(
+          student.paidFee || 0
+        );
 
-            examFee:
-              Number(examFee || 0),
+      const openingDue =
+        Number(
+          student.openingDue || 0
+        );
 
-            sportFee:
-              Number(sportFee || 0),
+      const feeDiscountType =
+        normalizeDiscountType(
+          student.feeDiscountType
+        );
 
-            computerFee:
-              Number(computerFee || 0),
+      const totalFee =
+        calculateStudentTotalFee(
+          normalizedFees,
+          openingDue,
+          feeDiscountType
+        );
 
-            functionFee:
-              Number(functionFee || 0),
+      const dueFee =
+        calculateStudentDueFee(
+          totalFee,
+          paidFee
+        );
 
-            smartClassFee:
-              Number(smartClassFee || 0),
+      const updatedStudent =
+        await Student.findOneAndUpdate(
+          {
+            _id:
+              student._id,
 
-            otherCharges:
-              Number(otherCharges || 0),
-
-            totalFee,
-
-            dueFee,
-
-            updatedBy,
+            isDeleted:
+              false,
           },
-        },
-        {
-          new: true,
-          runValidators: true,
-        }
-      );
+          {
+            $set: {
+              admissionFee:
+                normalizedFees.admissionFee,
 
-    if (updatedStudent) {
-      updatedStudents.push(
-        updatedStudent
-      );
+              monthlyFee:
+                normalizedFees.monthlyFee,
+
+              examFee:
+                normalizedFees.examFee,
+
+              sportFee:
+                normalizedFees.sportFee,
+
+              computerFee:
+                normalizedFees.computerFee,
+
+              functionFee:
+                normalizedFees.functionFee,
+
+              smartClassFee:
+                normalizedFees.smartClassFee,
+
+              otherCharges:
+                normalizedFees.otherCharges,
+
+              totalFee,
+
+              dueFee,
+
+              updatedBy,
+            },
+          },
+          {
+            new: true,
+
+            runValidators: true,
+          }
+        );
+
+      if (updatedStudent) {
+        updatedStudents.push(
+          updatedStudent
+        );
+      }
     }
-  }
 
-  return updatedStudents;
-};
+    return updatedStudents;
+  };
 
 // =====================================================
 // Update Individual Student Fee Heads
 // =====================================================
-//
-// ADMIN can update one student's fee
-// without changing the complete class.
-//
-// Example:
-//
-// Student Rahul
-// Monthly Fee = 1500
-//
-// Admin changes:
-// Monthly Fee = 1200
-//
-// Only Rahul is affected.
-//
 
-const updateIndividualStudentFees = async (
-  studentId,
-  feeData,
-  updatedBy
-) => {
-  const student =
-    await findByStudentId(
-      studentId
-    );
+const updateIndividualStudentFees =
+  async (
+    studentId,
+    feeData,
+    updatedBy
+  ) => {
+    const student =
+      await findByStudentId(
+        studentId
+      );
 
-  if (!student) {
-    return null;
-  }
+    if (!student) {
+      return null;
+    }
 
-  // ===================================================
-  // Current Fee Values
-  // ===================================================
+    const admissionFee =
+      feeData.admissionFee !==
+      undefined
+        ? Number(
+            feeData.admissionFee
+          )
+        : Number(
+            student.admissionFee || 0
+          );
 
-  const admissionFee =
-    feeData.admissionFee !== undefined
-      ? Number(feeData.admissionFee)
-      : Number(student.admissionFee || 0);
+    const monthlyFee =
+      feeData.monthlyFee !==
+      undefined
+        ? Number(
+            feeData.monthlyFee
+          )
+        : Number(
+            student.monthlyFee || 0
+          );
 
-  const monthlyFee =
-    feeData.monthlyFee !== undefined
-      ? Number(feeData.monthlyFee)
-      : Number(student.monthlyFee || 0);
+    const examFee =
+      feeData.examFee !==
+      undefined
+        ? Number(
+            feeData.examFee
+          )
+        : Number(
+            student.examFee || 0
+          );
 
-  const examFee =
-    feeData.examFee !== undefined
-      ? Number(feeData.examFee)
-      : Number(student.examFee || 0);
+    const sportFee =
+      feeData.sportFee !==
+      undefined
+        ? Number(
+            feeData.sportFee
+          )
+        : Number(
+            student.sportFee || 0
+          );
 
-  const sportFee =
-    feeData.sportFee !== undefined
-      ? Number(feeData.sportFee)
-      : Number(student.sportFee || 0);
+    const computerFee =
+      feeData.computerFee !==
+      undefined
+        ? Number(
+            feeData.computerFee
+          )
+        : Number(
+            student.computerFee || 0
+          );
 
-  const computerFee =
-    feeData.computerFee !== undefined
-      ? Number(feeData.computerFee)
-      : Number(student.computerFee || 0);
+    const functionFee =
+      feeData.functionFee !==
+      undefined
+        ? Number(
+            feeData.functionFee
+          )
+        : Number(
+            student.functionFee || 0
+          );
 
-  const functionFee =
-    feeData.functionFee !== undefined
-      ? Number(feeData.functionFee)
-      : Number(student.functionFee || 0);
+    const smartClassFee =
+      feeData.smartClassFee !==
+      undefined
+        ? Number(
+            feeData.smartClassFee
+          )
+        : Number(
+            student.smartClassFee || 0
+          );
 
-  const smartClassFee =
-    feeData.smartClassFee !== undefined
-      ? Number(
-          feeData.smartClassFee
-        )
-      : Number(
-          student.smartClassFee || 0
-        );
+    const otherCharges =
+      feeData.otherCharges !==
+      undefined
+        ? Number(
+            feeData.otherCharges
+          )
+        : Number(
+            student.otherCharges || 0
+          );
 
-  const otherCharges =
-    feeData.otherCharges !== undefined
-      ? Number(feeData.otherCharges)
-      : Number(student.otherCharges || 0);
-
-  // ===================================================
-  // Calculate Total
-  // ===================================================
-
-  const feeTotal =
-    admissionFee +
-    monthlyFee +
-    examFee +
-    sportFee +
-    computerFee +
-    functionFee +
-    smartClassFee +
-    otherCharges;
-
-  // ===================================================
-  // Opening Due
-  // ===================================================
-
-  const openingDue =
-    Number(student.openingDue || 0);
-
-  const totalFee =
-    feeTotal + openingDue;
-
-  // ===================================================
-  // Existing Paid Fee
-  // ===================================================
-
-  const paidFee =
-    Number(student.paidFee || 0);
-
-  // ===================================================
-  // Calculate Due
-  // ===================================================
-
-  const dueFee =
-    Math.max(
-      totalFee - paidFee,
-      0
-    );
-
-  // ===================================================
-  // Update Student
-  // ===================================================
-
-  return await Student.findOneAndUpdate(
-    {
-      _id: student._id,
-      isDeleted: false,
-    },
-    {
-      $set: {
+    const normalizedFees =
+      normalizeFeeValues({
         admissionFee,
 
         monthlyFee,
@@ -518,20 +856,84 @@ const updateIndividualStudentFees = async (
         smartClassFee,
 
         otherCharges,
+      });
 
+    const feeDiscountType =
+      normalizeDiscountType(
+        student.feeDiscountType
+      );
+
+    const openingDue =
+      Number(
+        student.openingDue || 0
+      );
+
+    const totalFee =
+      calculateStudentTotalFee(
+        normalizedFees,
+        openingDue,
+        feeDiscountType
+      );
+
+    const paidFee =
+      Number(
+        student.paidFee || 0
+      );
+
+    const dueFee =
+      calculateStudentDueFee(
         totalFee,
+        paidFee
+      );
 
-        dueFee,
+    return await Student.findOneAndUpdate(
+      {
+        _id:
+          student._id,
 
-        updatedBy,
+        isDeleted:
+          false,
       },
-    },
-    {
-      new: true,
-      runValidators: true,
-    }
-  );
-};
+      {
+        $set: {
+          admissionFee:
+            normalizedFees.admissionFee,
+
+          monthlyFee:
+            normalizedFees.monthlyFee,
+
+          examFee:
+            normalizedFees.examFee,
+
+          sportFee:
+            normalizedFees.sportFee,
+
+          computerFee:
+            normalizedFees.computerFee,
+
+          functionFee:
+            normalizedFees.functionFee,
+
+          smartClassFee:
+            normalizedFees.smartClassFee,
+
+          otherCharges:
+            normalizedFees.otherCharges,
+
+          totalFee,
+
+          dueFee,
+
+          updatedBy,
+        },
+      },
+      {
+        new: true,
+
+        runValidators: true,
+      }
+    );
+  };
 
 // =====================================================
 // Export
@@ -563,4 +965,14 @@ module.exports = {
   updateStudentsFeeByClass,
 
   updateIndividualStudentFees,
+
+  calculateDiscountedFees,
+
+  calculateEffectiveFeeTotal,
+
+  calculateStudentTotalFee,
+
+  calculateStudentDueFee,
+
+  normalizeDiscountType,
 };
