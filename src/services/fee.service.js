@@ -459,7 +459,7 @@ const getNormalMonthlyFee = (
   }
 
   switch (
-    discountType
+  discountType
   ) {
     case "SIBLING":
       return Number(
@@ -509,9 +509,9 @@ const isLumpSumAvailable = (
 
   return (
     month >=
-      LUMP_SUM_START_MONTH &&
+    LUMP_SUM_START_MONTH &&
     month <=
-      LUMP_SUM_END_MONTH
+    LUMP_SUM_END_MONTH
   );
 };
 
@@ -625,7 +625,7 @@ const getRemainingAcademicMonths = (
       academicEndDate.getFullYear() -
       currentMonthDate.getFullYear()
     ) *
-      12 +
+    12 +
     (
       academicEndDate.getMonth() -
       currentMonthDate.getMonth()
@@ -917,7 +917,7 @@ const calculateLumpSumDetails =
       Number(
         Math.max(
           oneTimeFees -
-            alreadyPaidOneTime,
+          alreadyPaidOneTime,
           0
         ).toFixed(2)
       );
@@ -988,7 +988,7 @@ const calculateLumpSumDetails =
       Number(
         Math.max(
           lumpSumMonthlyTotal +
-            remainingOneTimeFees,
+          remainingOneTimeFees,
           0
         ).toFixed(2)
       );
@@ -999,7 +999,7 @@ const calculateLumpSumDetails =
 
     const monthlyDiscountPercentage =
       discountType === "NONE" ||
-      discountType === "GIRL"
+        discountType === "GIRL"
         ? 10
         : 0;
 
@@ -1050,7 +1050,7 @@ const validateLumpSumPayment =
     ) {
       throw new Error(
         details.reason ||
-          "Student is not eligible for Lump Sum payment"
+        "Student is not eligible for Lump Sum payment"
       );
     }
 
@@ -1091,7 +1091,7 @@ const validateRTEPayment =
   ) => {
     if (
       student.feeDiscountType ===
-        "RTE" &&
+      "RTE" &&
       Number(
         student.openingDue || 0
       ) === 0 &&
@@ -1147,19 +1147,19 @@ const buildFeePaymentData = ({
     lumpSumDiscountPercent:
       isLumpSum
         ? Number(
-            lumpSumDetails
-              ?.monthlyDiscountPercentage ||
-              0
-          )
+          lumpSumDetails
+            ?.monthlyDiscountPercentage ||
+          0
+        )
         : 0,
 
     lumpSumDiscountAmount:
       isLumpSum
         ? Number(
-            lumpSumDetails
-              ?.additionalDiscount ||
-              0
-          )
+          lumpSumDetails
+            ?.additionalDiscount ||
+          0
+        )
         : 0,
 
     paymentMode,
@@ -1208,7 +1208,7 @@ const updateStudentAfterPayment =
           Number(
             currentDueFee || 0
           ) -
-            Number(paymentAmount),
+          Number(paymentAmount),
           0
         );
     }
@@ -1341,13 +1341,28 @@ const collectFee = async (
   // Lump Sum
   // ===================================================
 
-  let lumpSumDetails =
-    null;
+  // ===================================================
+  // Lump Sum
+  // ===================================================
+
+  let lumpSumDetails = null;
 
   if (
     finalPaymentType ===
     "LUMP_SUM"
   ) {
+    // If current due is 0,
+    // Lump Sum payment is not allowed.
+    if (currentDueFee <= 0) {
+      const error = new Error(
+        "Amount cannot be greater than due fee. Due fee is ₹0"
+      );
+
+      error.statusCode = 400;
+
+      throw error;
+    }
+
     lumpSumDetails =
       await validateLumpSumPayment(
         student,
@@ -1378,15 +1393,15 @@ const collectFee = async (
 
   const finalRemarks =
     finalPaymentType ===
-    "LUMP_SUM"
+      "LUMP_SUM"
       ? (
-          remarks
-            ? `${remarks} | Lump Sum Payment`
-            : "Lump Sum Academic Fee Payment"
-        )
+        remarks
+          ? `${remarks} | Lump Sum Payment`
+          : "Lump Sum Academic Fee Payment"
+      )
       : (
-          remarks || ""
-        );
+        remarks || ""
+      );
 
   // ===================================================
   // Create Fee
@@ -1470,7 +1485,7 @@ const collectFee = async (
 
       lumpSumDetails:
         finalPaymentType ===
-        "LUMP_SUM"
+          "LUMP_SUM"
           ? lumpSumDetails
           : null,
     },
@@ -1561,17 +1576,29 @@ const createOnlineQR = async (
     currentDueFee
   );
 
+
   // ===================================================
   // Lump Sum
   // ===================================================
 
-  let lumpSumDetails =
-    null;
+  let lumpSumDetails = null;
 
   if (
     finalPaymentType ===
     "LUMP_SUM"
   ) {
+    // If current due is 0,
+    // Lump Sum payment is not allowed.
+    if (currentDueFee <= 0) {
+      const error = new Error(
+        "Amount cannot be greater than due fee. Due fee is ₹0"
+      );
+
+      error.statusCode = 400;
+
+      throw error;
+    }
+
     lumpSumDetails =
       await validateLumpSumPayment(
         student,
@@ -1621,7 +1648,7 @@ const createOnlineQR = async (
 
       description:
         finalPaymentType ===
-        "LUMP_SUM"
+          "LUMP_SUM"
           ? `Lump Sum School Fee Payment - ${student.studentId}`
           : `${feeHead} Fee Payment - ${student.studentId}`,
 
@@ -1717,7 +1744,7 @@ const createOnlineQR = async (
 
     lumpSumDetails:
       finalPaymentType ===
-      "LUMP_SUM"
+        "LUMP_SUM"
         ? lumpSumDetails
         : null,
   };
@@ -1761,9 +1788,9 @@ const checkOnlinePayment =
       const existingFee =
         pendingPayment.paymentId
           ? await feeRepository
-              .findByTransactionId(
-                pendingPayment.paymentId
-              )
+            .findByTransactionId(
+              pendingPayment.paymentId
+            )
           : null;
 
       return {
@@ -1946,7 +1973,7 @@ const checkOnlinePayment =
     const finalPaymentType =
       validatePaymentType(
         pendingPayment.paymentType ||
-          "REGULAR"
+        "REGULAR"
       );
 
     // =================================================
@@ -1976,13 +2003,24 @@ const checkOnlinePayment =
     // Lump Sum
     // =================================================
 
-    let lumpSumDetails =
-      null;
+    let lumpSumDetails = null;
 
     if (
       finalPaymentType ===
       "LUMP_SUM"
     ) {
+      // If current due is 0,
+      // Lump Sum payment is not allowed.
+      if (currentDueFee <= 0) {
+        const error = new Error(
+          "Amount cannot be greater than due fee. Due fee is ₹0"
+        );
+
+        error.statusCode = 400;
+
+        throw error;
+      }
+
       lumpSumDetails =
         await validateLumpSumPayment(
           student,
@@ -2003,22 +2041,22 @@ const checkOnlinePayment =
 
     const lumpSumDiscountPercent =
       finalPaymentType ===
-      "LUMP_SUM"
+        "LUMP_SUM"
         ? Number(
-            lumpSumDetails
-              ?.monthlyDiscountPercentage ||
-              0
-          )
+          lumpSumDetails
+            ?.monthlyDiscountPercentage ||
+          0
+        )
         : 0;
 
     const lumpSumDiscountAmount =
       finalPaymentType ===
-      "LUMP_SUM"
+        "LUMP_SUM"
         ? Number(
-            lumpSumDetails
-              ?.additionalDiscount ||
-              0
-          )
+          lumpSumDetails
+            ?.additionalDiscount ||
+          0
+        )
         : 0;
 
     // =================================================
@@ -2027,7 +2065,7 @@ const checkOnlinePayment =
 
     const finalRemarks =
       finalPaymentType ===
-      "LUMP_SUM"
+        "LUMP_SUM"
         ? "Online UPI QR Lump Sum Academic Fee Payment"
         : "Online UPI QR Payment";
 
@@ -2146,7 +2184,7 @@ const checkOnlinePayment =
 
         lumpSumDetails:
           finalPaymentType ===
-          "LUMP_SUM"
+            "LUMP_SUM"
             ? lumpSumDetails
             : null,
       },
@@ -2200,7 +2238,7 @@ const getFeeHistory =
     if (
       !studentId ||
       typeof studentId !==
-        "string"
+      "string"
     ) {
       throw new Error(
         "Student ID is required"
