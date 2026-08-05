@@ -1,4 +1,5 @@
-const asyncHandler = require("../helpers/asyncHandler");
+const asyncHandler =
+  require("../helpers/asyncHandler");
 
 const sendResponse =
   require("../utils/response");
@@ -9,6 +10,15 @@ const feeService =
 // =====================================================
 // Collect CASH Fee
 // ADMIN / RECEPTIONIST
+// =====================================================
+//
+// Supports:
+// - Normal Fee Payment
+// - Sibling Discount
+// - RTE Discount
+// - Girl Discount
+// - Lump Sum Payment
+//
 // =====================================================
 
 exports.collectFee = asyncHandler(
@@ -34,27 +44,33 @@ exports.collectFee = asyncHandler(
 // PUBLIC
 // =====================================================
 //
-// Student can search himself and create QR
+// Student can create payment QR
 // without login.
 //
+// Supports:
+// - Normal payment
+// - Lump Sum payment
+//
+// =====================================================
 
-exports.createOnlineQR = asyncHandler(
-  async (req, res) => {
-    const qr =
-      await feeService.createOnlineQR(
-        req.body,
-        null
+exports.createOnlineQR =
+  asyncHandler(
+    async (req, res) => {
+      const qr =
+        await feeService.createOnlineQR(
+          req.body,
+          null
+        );
+
+      return sendResponse(
+        res,
+        201,
+        true,
+        "Payment QR generated successfully",
+        qr
       );
-
-    return sendResponse(
-      res,
-      201,
-      true,
-      "Payment QR generated successfully",
-      qr
-    );
-  }
-);
+    }
+  );
 
 // =====================================================
 // Check Online Payment
@@ -64,6 +80,7 @@ exports.createOnlineQR = asyncHandler(
 // Student can check payment status
 // without login.
 //
+// =====================================================
 
 exports.checkOnlinePayment =
   asyncHandler(
@@ -82,6 +99,48 @@ exports.checkOnlinePayment =
           ? "Payment successful"
           : "Payment pending",
         result
+      );
+    }
+  );
+
+// =====================================================
+// Lump Sum Preview
+// PUBLIC
+// =====================================================
+//
+// Used before payment.
+//
+// Frontend/Kiosk calls this API after
+// student is selected.
+//
+// It returns:
+//
+// - Discount type
+// - Remaining months
+// - Normal monthly fee
+// - Lump Sum monthly fee
+// - Remaining monthly amount
+// - Remaining one-time fees
+// - Normal remaining academic fee
+// - Additional discount
+// - Final Lump Sum amount
+//
+// =====================================================
+
+exports.getLumpSumPreview =
+  asyncHandler(
+    async (req, res) => {
+      const preview =
+        await feeService.getLumpSumPreview(
+          req.params.studentId
+        );
+
+      return sendResponse(
+        res,
+        200,
+        true,
+        "Lump Sum preview fetched successfully",
+        preview
       );
     }
   );

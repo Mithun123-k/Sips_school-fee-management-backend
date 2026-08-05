@@ -16,6 +16,50 @@ const ALLOWED_FEE_HEADS = [
 ];
 
 // =====================================================
+// Allowed Payment Types
+// =====================================================
+//
+// REGULAR
+//   -> Normal fee payment
+//
+// LUMP_SUM
+//   -> Full eligible fee payment
+//   -> Additional 10% discount on MONTHLY fee
+//      only when applicable
+//
+// =====================================================
+
+const ALLOWED_PAYMENT_TYPES = [
+  "REGULAR",
+  "LUMP_SUM",
+];
+
+// =====================================================
+// Allowed Student Discount Types
+// =====================================================
+//
+// NONE
+//   -> No normal discount
+//
+// SIBLING
+//   -> Monthly Fee 20% discount
+//
+// RTE
+//   -> All fees 100% discount
+//
+// GIRL
+//   -> Admission Fee 50% discount
+//
+// =====================================================
+
+const ALLOWED_FEE_DISCOUNT_TYPES = [
+  "NONE",
+  "SIBLING",
+  "RTE",
+  "GIRL",
+];
+
+// =====================================================
 // Fee Schema
 // =====================================================
 
@@ -68,13 +112,106 @@ const feeSchema = new mongoose.Schema(
     },
 
     // =================================================
-    // Amount
+    // Amount Actually Paid
+    // =================================================
+    //
+    // IMPORTANT:
+    // This is the FINAL amount actually paid by
+    // the student after applicable discounts.
+    //
+    // Example:
+    //
+    // Monthly Fee = ₹1500
+    // Lump Sum 10% = ₹150 discount
+    // Paid = ₹1350
+    //
+    // amount = 1350
+    //
     // =================================================
 
     amount: {
       type: Number,
       required: true,
       min: 0.01,
+    },
+
+    // =================================================
+    // Payment Type
+    // =================================================
+    //
+    // REGULAR
+    // LUMP_SUM
+    //
+    // =================================================
+
+    paymentType: {
+      type: String,
+      enum: ALLOWED_PAYMENT_TYPES,
+      default: "REGULAR",
+      required: true,
+      index: true,
+    },
+
+    // =================================================
+    // Student Normal Discount Type
+    // =================================================
+    //
+    // Stored with payment for receipt/report history.
+    //
+    // NONE
+    // SIBLING
+    // RTE
+    // GIRL
+    //
+    // =================================================
+
+    feeDiscountType: {
+      type: String,
+      enum: ALLOWED_FEE_DISCOUNT_TYPES,
+      default: "NONE",
+      required: true,
+      index: true,
+    },
+
+    // =================================================
+    // Lump Sum Discount Percentage
+    // =================================================
+    //
+    // Only applicable when paymentType = LUMP_SUM.
+    //
+    // Current rule:
+    // 10% additional discount on MONTHLY fee.
+    //
+    // For REGULAR payment:
+    // 0
+    //
+    // =================================================
+
+    lumpSumDiscountPercent: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
+
+    // =================================================
+    // Lump Sum Discount Amount
+    // =================================================
+    //
+    // Actual rupee amount discounted from the payment.
+    //
+    // Example:
+    //
+    // Monthly Fee = ₹1500
+    // Lump Sum Discount = 10%
+    // Discount Amount = ₹150
+    //
+    // =================================================
+
+    lumpSumDiscountAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
 
     // =================================================
@@ -137,6 +274,7 @@ const feeSchema = new mongoose.Schema(
     // ONLINE:
     // Public payment can have null
     //
+    // =================================================
 
     collectedBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -171,6 +309,12 @@ feeSchema.index({
 feeSchema.index({
   student: 1,
   feeHead: 1,
+  paymentStatus: 1,
+});
+
+feeSchema.index({
+  student: 1,
+  paymentType: 1,
   paymentStatus: 1,
 });
 

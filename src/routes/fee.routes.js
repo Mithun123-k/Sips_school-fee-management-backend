@@ -1,6 +1,8 @@
-const express = require("express");
+const express =
+  require("express");
 
-const router = express.Router();
+const router =
+  express.Router();
 
 const feeController =
   require("../controllers/fee.controller");
@@ -17,11 +19,18 @@ const validate =
 const {
   collectFeeValidation,
   onlineQRValidation,
-} = require("../validators/fee.validator");
+} =
+  require("../validators/fee.validator");
 
 // =====================================================
 // Collect CASH Fee
 // ADMIN / RECEPTIONIST
+// =====================================================
+//
+// POST /api/fees/collect
+//
+// Authentication required.
+//
 // =====================================================
 
 router.post(
@@ -46,9 +55,11 @@ router.post(
 // PUBLIC
 // =====================================================
 //
-// Student can search student and create
-// payment QR without login.
+// POST /api/fees/online/create-qr
 //
+// No authentication required.
+//
+// =====================================================
 
 router.post(
   "/online/create-qr",
@@ -65,9 +76,11 @@ router.post(
 // PUBLIC
 // =====================================================
 //
-// Student can check payment status
-// using QR ID.
+// GET /api/fees/online/status/:qrId
 //
+// No authentication required.
+//
+// =====================================================
 
 router.get(
   "/online/status/:qrId",
@@ -76,8 +89,33 @@ router.get(
 );
 
 // =====================================================
+// Lump Sum Preview
+// PUBLIC
+// =====================================================
+//
+// GET /api/fees/lump-sum-preview/:studentId
+//
+// No authentication required.
+//
+// Used before showing Lump Sum payment.
+//
+// =====================================================
+
+router.get(
+  "/lump-sum-preview/:studentId",
+
+  feeController.getLumpSumPreview
+);
+
+// =====================================================
 // Fee History
 // ADMIN / RECEPTIONIST
+// =====================================================
+//
+// GET /api/fees/history/:studentId
+//
+// Authentication required.
+//
 // =====================================================
 
 router.get(
@@ -97,6 +135,12 @@ router.get(
 // Receipt Details
 // ADMIN / RECEPTIONIST
 // =====================================================
+//
+// GET /api/fees/receipt/:id
+//
+// Authentication required.
+//
+// =====================================================
 
 router.get(
   "/receipt/:id",
@@ -110,5 +154,9 @@ router.get(
 
   feeController.getReceipt
 );
+
+// =====================================================
+// Export
+// =====================================================
 
 module.exports = router;

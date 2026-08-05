@@ -90,15 +90,47 @@ const studentSchema = new mongoose.Schema(
     },
 
     // =====================================================
+    // Fee Discount Type
+    // =====================================================
+    //
+    // NONE
+    //   -> No discount
+    //
+    // SIBLING
+    //   -> Only Monthly Fee gets 20% discount
+    //
+    // RTE
+    //   -> All applicable fees get 100% discount
+    //
+    // GIRL
+    //   -> Only Admission Fee gets 50% discount
+    //
+    // =====================================================
+
+    feeDiscountType: {
+      type: String,
+      enum: [
+        "NONE",
+        "SIBLING",
+        "RTE",
+        "GIRL",
+      ],
+      default: "NONE",
+      required: true,
+      trim: true,
+    },
+
+    // =====================================================
     // Student Fee Heads
     // =====================================================
     //
-    // These values are the actual fees assigned
+    // These are the ORIGINAL fees assigned
     // to this particular student.
     //
-    // Initially they can come from FeeStructure.
-    // Later ADMIN can override them individually.
+    // Discount is calculated separately.
+    // Original values are preserved.
     //
+    // =====================================================
 
     admissionFee: {
       type: Number,
@@ -162,8 +194,10 @@ const studentSchema = new mongoose.Schema(
     // Total Fee
     // =====================================================
     //
-    // Sum of all applicable fee heads + opening due.
+    // Effective total fee after applicable discount
+    // + opening due.
     //
+    // =====================================================
 
     totalFee: {
       type: Number,
@@ -187,6 +221,10 @@ const studentSchema = new mongoose.Schema(
     //
     // dueFee = totalFee - paidFee
     //
+    // Lump Sum future-month coverage is also considered
+    // during fee calculation.
+    //
+    // =====================================================
 
     dueFee: {
       type: Number,
@@ -203,12 +241,121 @@ const studentSchema = new mongoose.Schema(
     },
 
     // =====================================================
+    // Lump Sum Payment
+    // =====================================================
+    //
+    // When a student pays future monthly fees through
+    // Lump Sum payment, these fields store the coverage.
+    //
+    // Example:
+    //
+    // Monthly Fee = ₹1500
+    //
+    // Student pays August -> March through Lump Sum.
+    //
+    // lumpSumPaid = true
+    //
+    // lumpSumPaidTill = March 1 / March 31
+    // depending on the calculation logic.
+    //
+    // Until lumpSumPaidTill:
+    //
+    // Monthly Fee = 0
+    //
+    // After lumpSumPaidTill:
+    //
+    // Normal monthly fee generation starts again.
+    //
+    // =====================================================
+
+    lumpSumPaid: {
+      type: Boolean,
+      default: false,
+    },
+
+    // =====================================================
+    // Lump Sum Paid Till
+    // =====================================================
+    //
+    // Stores the last month covered by Lump Sum payment.
+    //
+    // Example:
+    //
+    // lumpSumPaidTill = 2027-03-31
+    //
+    // Means monthly fee remains covered through March 2027.
+    //
+    // =====================================================
+
+    lumpSumPaidTill: {
+      type: Date,
+      default: null,
+    },
+
+    // =====================================================
+    // Lump Sum Discount Type
+    // =====================================================
+    //
+    // NONE
+    //       -> No Lump Sum discount
+    //
+    // PERCENTAGE
+    //       -> Percentage based Lump Sum discount
+    //
+    // =====================================================
+
+    lumpSumDiscountType: {
+      type: String,
+      enum: [
+        "NONE",
+        "PERCENTAGE",
+      ],
+      default: "NONE",
+    },
+
+    // =====================================================
+    // Lump Sum Discount Percentage
+    // =====================================================
+
+    lumpSumDiscountPercent: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
+
+    // =====================================================
+    // Lump Sum Discount Amount
+    // =====================================================
+    //
+    // Actual amount discounted from Lump Sum payment.
+    //
+    // Example:
+    //
+    // Original Lump Sum = ₹12,000
+    // Discount = 10%
+    // Discount Amount = ₹1,200
+    //
+    // Final Paid Amount = ₹10,800
+    //
+    // =====================================================
+
+    lumpSumDiscountAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    // =====================================================
     // Student Status
     // =====================================================
 
     status: {
       type: String,
-      enum: ["ACTIVE", "INACTIVE"],
+      enum: [
+        "ACTIVE",
+        "INACTIVE",
+      ],
       default: "ACTIVE",
     },
 
@@ -257,6 +404,24 @@ studentSchema.index(
     unique: true,
   }
 );
+
+// =====================================================
+// Lump Sum Coverage Index
+// =====================================================
+//
+// Useful for finding students whose Lump Sum
+// coverage is currently active.
+//
+// =====================================================
+
+studentSchema.index({
+  lumpSumPaid: 1,
+  lumpSumPaidTill: 1,
+});
+
+// =====================================================
+// Export
+// =====================================================
 
 module.exports = mongoose.model(
   "Student",
