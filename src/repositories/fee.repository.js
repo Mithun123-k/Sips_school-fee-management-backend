@@ -25,6 +25,23 @@ const createFee = async (data) => {
 // =====================================================
 // Get Fee History
 // =====================================================
+
+const getAllFeeHistory = async () => {
+  return await Fee.find({})
+    .populate(
+      "student",
+      "studentId admissionNo name fatherName className section"
+    )
+    .populate(
+      "collectedBy",
+      "name role"
+    )
+    .sort({
+      paymentDate: -1,
+      createdAt: -1,
+    });
+};
+
 //
 // Returns complete payment history of a student.
 //
@@ -637,4 +654,6 @@ module.exports = {
   getTotalLumpSumCollectedAmount,
 
   getRegularPayments,
+
+  getAllFeeHistory,
 };

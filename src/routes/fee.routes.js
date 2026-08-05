@@ -119,6 +119,12 @@ router.get(
 // =====================================================
 
 router.get(
+  "/history",
+  auth,
+  feeController.getAllFeeHistory
+);
+
+router.get(
   "/history/:studentId",
 
   auth,
