@@ -732,8 +732,7 @@ const getNormalOneTimeFees = (
 // Get Paid Fee Head Amounts
 // =====================================================
 
-const getPaidFeeHeadAmounts =
-  async (
+const getPaidFeeHeadAmounts = async (
     student
   ) => {
     const history =
@@ -784,8 +783,7 @@ const getPaidFeeHeadAmounts =
 // Calculate Lump Sum Details
 // =====================================================
 
-const calculateLumpSumDetails =
-  async (
+const calculateLumpSumDetails = async (
     student,
     currentDate = new Date()
   ) => {
@@ -2267,8 +2265,7 @@ const getFeeHistory =
 // Receipt Details
 // =====================================================
 
-const getReceipt =
-  async (
+const getReceipt =  async (
     id
   ) => {
     if (!id) {
@@ -2292,9 +2289,18 @@ const getReceipt =
     return receipt;
   };
 
+
+
+  const getAllFeeHistory = async () => {
+  return await feeRepository.getAllFeeHistory();
+};
+
 // =====================================================
 // Export
 // =====================================================
+
+
+
 
 module.exports = {
   collectFee,
@@ -2338,4 +2344,5 @@ module.exports = {
   normalizePaymentType,
 
   getOriginalFeeHeadAmount,
+  getAllFeeHistory,
 };

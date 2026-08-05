@@ -190,3 +190,18 @@ exports.getReceipt =
       );
     }
   );
+
+  exports.getAllFeeHistory = asyncHandler(
+  async (req, res) => {
+    const fees =
+      await feeService.getAllFeeHistory();
+
+    return sendResponse(
+      res,
+      200,
+      true,
+      "All fee history fetched successfully",
+      fees
+    );
+  }
+);
