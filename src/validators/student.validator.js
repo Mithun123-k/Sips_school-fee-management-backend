@@ -27,15 +27,15 @@ const createStudentValidation = [
   // Admission Number
   // ---------------------------------------------------
 
-  body("admissionNo")
-    .optional({
-      values: "falsy",
-    })
-    .trim()
-    .isString()
-    .withMessage(
-      "Admission number must be a string"
-    ),
+  // body("admissionNo")
+  //   .optional({
+  //     values: "falsy",
+  //   })
+  //   .trim()
+  //   .isString()
+  //   .withMessage(
+  //     "Admission number must be a string"
+  //   ),
 
   // ---------------------------------------------------
   // Name

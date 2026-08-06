@@ -6,6 +6,7 @@ const feeRepository =
 
 const generateStudentId =
   require("../utils/generateStudentId");
+const generateAdmissionNo = require("../utils/generateAdmission");
 
 // =====================================================
 // Constants
@@ -1013,7 +1014,7 @@ const createStudent = async (
   userId
 ) => {
   const {
-    admissionNo,
+    // admissionNo,
     name,
     fatherName,
     motherName,
@@ -1048,7 +1049,7 @@ const createStudent = async (
 
   const existingStudent =
     await studentRepository.findByAdmissionNo(
-      admissionNo,
+      // admissionNo,
       name,
       fatherName,
       motherName,
@@ -1058,15 +1059,15 @@ const createStudent = async (
   if (
     existingStudent
   ) {
-    if (
-      admissionNo &&
-      existingStudent.admissionNo ===
-      admissionNo
-    ) {
-      throw new Error(
-        "Student with this admission number already exists"
-      );
-    }
+    // if (
+    //   admissionNo &&
+    //   existingStudent.admissionNo ===
+    //   admissionNo
+    // ) {
+    //   throw new Error(
+    //     "Student with this admission number already exists"
+    //   );
+    // }
 
     throw new Error(
       "Student with same name, father name, mother name and class already exists"
@@ -1079,6 +1080,8 @@ const createStudent = async (
 
   const studentId =
     await generateStudentId();
+    
+    const admissionNo = await generateAdmissionNo();
 
   // ===================================================
   // Admission Date
@@ -1175,8 +1178,7 @@ const createStudent = async (
     await studentRepository.createStudent({
       studentId,
 
-      admissionNo:
-        admissionNo || "",
+      admissionNo,
 
       name,
 
