@@ -105,7 +105,7 @@ const studentSchema = new mongoose.Schema(
     // GIRL
     //   -> Only Admission Fee gets 50% discount
     //
-    // =====================================================
+    // ===================================================== 
 
     feeDiscountType: {
       type: String,

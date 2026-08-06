@@ -229,7 +229,7 @@ const calculateDiscountedFeeHeads = (
   } = feeHeads;
 
   switch (
-    finalDiscountType
+  finalDiscountType
   ) {
     // =================================================
     // SIBLING
@@ -400,7 +400,7 @@ const getEffectiveMonthlyFee = (
     );
 
   switch (
-    discountType
+  discountType
   ) {
     case "SIBLING":
       return monthlyFee * 0.8;
@@ -545,7 +545,7 @@ const calculateAccruedMonths = (
     const elapsedMinutes =
       Math.floor(
         elapsedMilliseconds /
-          (60 * 1000)
+        (60 * 1000)
       );
 
     return (
@@ -585,7 +585,7 @@ const calculateAccruedMonths = (
 
   return (
     (currentYear - startYear) *
-      12 +
+    12 +
     (currentMonth -
       startMonth) +
     1
@@ -719,7 +719,7 @@ const hasActiveLumpSumPayment = async (
   const academicYearEnd =
     getAcademicYearEndDate(
       student.feeStartDate ||
-        student.admissionDate
+      student.admissionDate
     );
 
   if (!academicYearEnd) {
@@ -751,7 +751,7 @@ const hasActiveLumpSumPayment = async (
       const paymentDate =
         new Date(
           payment.paymentDate ||
-            payment.createdAt
+          payment.createdAt
         );
 
       if (
@@ -835,7 +835,7 @@ const calculateCurrentDueFee = async (
   ) {
     return Math.max(
       openingDue -
-        paidFee,
+      paidFee,
       0
     );
   }
@@ -865,9 +865,9 @@ const calculateCurrentDueFee = async (
   const accruedMonths =
     student.feeStartDate
       ? calculateAccruedMonths(
-          student.feeStartDate,
-          currentDate
-        )
+        student.feeStartDate,
+        currentDate
+      )
       : 0;
 
   // ===================================================
@@ -922,7 +922,7 @@ const calculateCurrentDueFee = async (
 
   return Math.max(
     totalEarnedFee -
-      paidFee,
+    paidFee,
     0
   );
 };
@@ -1038,6 +1038,8 @@ const createStudent = async (
     openingDue,
 
     feeDiscountType,
+    
+
   } = body;
 
   // ===================================================
@@ -1059,7 +1061,7 @@ const createStudent = async (
     if (
       admissionNo &&
       existingStudent.admissionNo ===
-        admissionNo
+      admissionNo
     ) {
       throw new Error(
         "Student with this admission number already exists"
@@ -1477,49 +1479,49 @@ const updateStudent = async (
     validateFeeHeads({
       admissionFee:
         updateData.admissionFee !==
-        undefined
+          undefined
           ? updateData.admissionFee
           : currentFeeHeads.admissionFee,
 
       monthlyFee:
         updateData.monthlyFee !==
-        undefined
+          undefined
           ? updateData.monthlyFee
           : currentFeeHeads.monthlyFee,
 
       examFee:
         updateData.examFee !==
-        undefined
+          undefined
           ? updateData.examFee
           : currentFeeHeads.examFee,
 
       sportFee:
         updateData.sportFee !==
-        undefined
+          undefined
           ? updateData.sportFee
           : currentFeeHeads.sportFee,
 
       computerFee:
         updateData.computerFee !==
-        undefined
+          undefined
           ? updateData.computerFee
           : currentFeeHeads.computerFee,
 
       functionFee:
         updateData.functionFee !==
-        undefined
+          undefined
           ? updateData.functionFee
           : currentFeeHeads.functionFee,
 
       smartClassFee:
         updateData.smartClassFee !==
-        undefined
+          undefined
           ? updateData.smartClassFee
           : currentFeeHeads.smartClassFee,
 
       otherCharges:
         updateData.otherCharges !==
-        undefined
+          undefined
           ? updateData.otherCharges
           : currentFeeHeads.otherCharges,
     });
@@ -1562,10 +1564,10 @@ const updateStudent = async (
 
   const finalDiscountType =
     updateData.feeDiscountType !==
-    undefined
+      undefined
       ? updateData.feeDiscountType
       : student.feeDiscountType ||
-        "NONE";
+      "NONE";
 
   // ===================================================
   // Recalculate Total Fee
@@ -1574,7 +1576,7 @@ const updateStudent = async (
   if (
     feeFieldsUpdated ||
     updateData.feeDiscountType !==
-      undefined
+    undefined
   ) {
     const finalOpeningDue =
       Number(
@@ -1625,7 +1627,7 @@ const updateStudent = async (
   if (
     existingStudent &&
     existingStudent._id.toString() !==
-      student._id.toString()
+    student._id.toString()
   ) {
     throw new Error(
       "Another student with same details already exists"
@@ -1709,7 +1711,7 @@ const searchStudent = async (
   if (
     !search ||
     typeof search !==
-      "string" ||
+    "string" ||
     !search.trim()
   ) {
     throw new Error(
@@ -1762,6 +1764,23 @@ const searchStudent = async (
 
     fatherName:
       updatedStudent.fatherName,
+    motherName:
+      updatedStudent.motherName,
+
+    admissionNo:
+      updatedStudent.admissionNo,
+
+    mobile:
+      updatedStudent.mobile,
+
+    email:
+      updatedStudent.email,
+
+    gender:
+      updatedStudent.gender,
+
+    dob:
+      updatedStudent.dob,
 
     className:
       updatedStudent.className,
@@ -1772,7 +1791,7 @@ const searchStudent = async (
     monthlyFee:
       Number(
         updatedStudent.monthlyFee ||
-          0
+        0
       ),
 
     feeDiscountType:
@@ -1782,7 +1801,7 @@ const searchStudent = async (
     dueFee:
       Number(
         updatedStudent.dueFee ||
-          0
+        0
       ),
 
     status:
