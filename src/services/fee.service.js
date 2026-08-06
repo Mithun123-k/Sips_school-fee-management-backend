@@ -733,301 +733,301 @@ const getNormalOneTimeFees = (
 // =====================================================
 
 const getPaidFeeHeadAmounts = async (
-    student
-  ) => {
-    const history =
-      await feeRepository.getFeeHistory(
-        student.studentId
-      );
+  student
+) => {
+  const history =
+    await feeRepository.getFeeHistory(
+      student.studentId
+    );
 
-    const paid = {
-      ADMISSION: 0,
-      MONTHLY: 0,
-      EXAM: 0,
-      SPORT: 0,
-      COMPUTER: 0,
-      FUNCTION: 0,
-      SMART_CLASS: 0,
-      OTHER: 0,
-    };
+  const paid = {
+    ADMISSION: 0,
+    MONTHLY: 0,
+    EXAM: 0,
+    SPORT: 0,
+    COMPUTER: 0,
+    FUNCTION: 0,
+    SMART_CLASS: 0,
+    OTHER: 0,
+  };
 
-    for (
-      const fee of history || []
+  for (
+    const fee of history || []
+  ) {
+    if (
+      fee.paymentStatus !==
+      "SUCCESS"
     ) {
-      if (
-        fee.paymentStatus !==
-        "SUCCESS"
-      ) {
-        continue;
-      }
-
-      if (
-        !Object.prototype.hasOwnProperty.call(
-          paid,
-          fee.feeHead
-        )
-      ) {
-        continue;
-      }
-
-      paid[fee.feeHead] +=
-        Number(
-          fee.amount || 0
-        );
+      continue;
     }
 
-    return paid;
-  };
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        paid,
+        fee.feeHead
+      )
+    ) {
+      continue;
+    }
+
+    paid[fee.feeHead] +=
+      Number(
+        fee.amount || 0
+      );
+  }
+
+  return paid;
+};
 
 // =====================================================
 // Calculate Lump Sum Details
 // =====================================================
 
 const calculateLumpSumDetails = async (
-    student,
-    currentDate = new Date()
-  ) => {
-    const discountType =
-      validateFeeDiscountType(
-        student.feeDiscountType
-      );
+  student,
+  currentDate = new Date()
+) => {
+  const discountType =
+    validateFeeDiscountType(
+      student.feeDiscountType
+    );
 
-    // -------------------------------------------------
-    // Availability
-    // -------------------------------------------------
+  // -------------------------------------------------
+  // Availability
+  // -------------------------------------------------
 
-    if (
-      !isLumpSumAvailable(
-        currentDate
-      )
-    ) {
-      throw new Error(
-        "Lump Sum discount is available only from April to August"
-      );
-    }
+  if (
+    !isLumpSumAvailable(
+      currentDate
+    )
+  ) {
+    throw new Error(
+      "Lump Sum discount is available only from April to August"
+    );
+  }
 
-    // -------------------------------------------------
-    // RTE
-    // -------------------------------------------------
+  // -------------------------------------------------
+  // RTE
+  // -------------------------------------------------
 
-    if (
-      discountType === "RTE"
-    ) {
-      return {
-        eligible: false,
-
-        reason:
-          "RTE student already has 100% fee discount",
-
-        paymentType:
-          "LUMP_SUM",
-
-        discountType,
-
-        monthlyDiscountPercentage: 0,
-
-        remainingMonths: 0,
-
-        normalMonthlyFee: 0,
-
-        lumpSumMonthlyFee: 0,
-
-        remainingMonthlyAmount: 0,
-
-        remainingOneTimeFees: 0,
-
-        remainingAcademicFee: 0,
-
-        additionalDiscount: 0,
-
-        lumpSumAmount: 0,
-      };
-    }
-
-    // -------------------------------------------------
-    // Paid History
-    // -------------------------------------------------
-
-    const paid =
-      await getPaidFeeHeadAmounts(
-        student
-      );
-
-    // -------------------------------------------------
-    // Remaining Months
-    // -------------------------------------------------
-
-    const remainingMonths =
-      getRemainingAcademicMonths(
-        currentDate
-      );
-
-    // -------------------------------------------------
-    // Monthly Fee
-    // -------------------------------------------------
-
-    const normalMonthlyFee =
-      getNormalMonthlyFee(
-        student
-      );
-
-    const remainingMonthlyAmount =
-      Number(
-        (
-          normalMonthlyFee *
-          remainingMonths
-        ).toFixed(2)
-      );
-
-    // -------------------------------------------------
-    // One-Time Fees
-    // -------------------------------------------------
-
-    const oneTimeFees =
-      getNormalOneTimeFees(
-        student
-      );
-
-    const alreadyPaidOneTime =
-      Number(
-        paid.ADMISSION || 0
-      ) +
-      Number(
-        paid.EXAM || 0
-      ) +
-      Number(
-        paid.SPORT || 0
-      ) +
-      Number(
-        paid.COMPUTER || 0
-      ) +
-      Number(
-        paid.FUNCTION || 0
-      ) +
-      Number(
-        paid.SMART_CLASS || 0
-      ) +
-      Number(
-        paid.OTHER || 0
-      );
-
-    const remainingOneTimeFees =
-      Number(
-        Math.max(
-          oneTimeFees -
-          alreadyPaidOneTime,
-          0
-        ).toFixed(2)
-      );
-
-    // -------------------------------------------------
-    // Normal Remaining Academic Fee
-    // -------------------------------------------------
-
-    const remainingAcademicFee =
-      Number(
-        (
-          remainingMonthlyAmount +
-          remainingOneTimeFees
-        ).toFixed(2)
-      );
-
-    // -------------------------------------------------
-    // Lump Sum Monthly Fee
-    // -------------------------------------------------
-
-    const lumpSumMonthlyFee =
-      calculateLumpSumMonthlyFee(
-        student
-      );
-
-    const lumpSumMonthlyTotal =
-      Number(
-        (
-          lumpSumMonthlyFee *
-          remainingMonths
-        ).toFixed(2)
-      );
-
-    // -------------------------------------------------
-    // Additional Discount
-    // -------------------------------------------------
-
-    let additionalDiscount = 0;
-
-    if (
-      discountType === "NONE" ||
-      discountType === "GIRL"
-    ) {
-      additionalDiscount =
-        Number(
-          (
-            remainingMonthlyAmount *
-            LUMP_SUM_MONTHLY_DISCOUNT
-          ).toFixed(2)
-        );
-    }
-
-    // SIBLING:
-    // Already gets 20%.
-    // No extra lump sum discount.
-
-    if (
-      discountType === "SIBLING"
-    ) {
-      additionalDiscount = 0;
-    }
-
-    // -------------------------------------------------
-    // Final Lump Sum Amount
-    // -------------------------------------------------
-
-    const lumpSumAmount =
-      Number(
-        Math.max(
-          lumpSumMonthlyTotal +
-          remainingOneTimeFees,
-          0
-        ).toFixed(2)
-      );
-
-    // -------------------------------------------------
-    // Discount Percentage
-    // -------------------------------------------------
-
-    const monthlyDiscountPercentage =
-      discountType === "NONE" ||
-        discountType === "GIRL"
-        ? 10
-        : 0;
-
+  if (
+    discountType === "RTE"
+  ) {
     return {
-      eligible: true,
+      eligible: false,
+
+      reason:
+        "RTE student already has 100% fee discount",
 
       paymentType:
         "LUMP_SUM",
 
       discountType,
 
-      monthlyDiscountPercentage,
+      monthlyDiscountPercentage: 0,
 
-      remainingMonths,
+      remainingMonths: 0,
 
-      normalMonthlyFee,
+      normalMonthlyFee: 0,
 
-      lumpSumMonthlyFee,
+      lumpSumMonthlyFee: 0,
 
-      remainingMonthlyAmount,
+      remainingMonthlyAmount: 0,
 
-      remainingOneTimeFees,
+      remainingOneTimeFees: 0,
 
-      remainingAcademicFee,
+      remainingAcademicFee: 0,
 
-      additionalDiscount,
+      additionalDiscount: 0,
 
-      lumpSumAmount,
+      lumpSumAmount: 0,
     };
+  }
+
+  // -------------------------------------------------
+  // Paid History
+  // -------------------------------------------------
+
+  const paid =
+    await getPaidFeeHeadAmounts(
+      student
+    );
+
+  // -------------------------------------------------
+  // Remaining Months
+  // -------------------------------------------------
+
+  const remainingMonths =
+    getRemainingAcademicMonths(
+      currentDate
+    );
+
+  // -------------------------------------------------
+  // Monthly Fee
+  // -------------------------------------------------
+
+  const normalMonthlyFee =
+    getNormalMonthlyFee(
+      student
+    );
+
+  const remainingMonthlyAmount =
+    Number(
+      (
+        normalMonthlyFee *
+        remainingMonths
+      ).toFixed(2)
+    );
+
+  // -------------------------------------------------
+  // One-Time Fees
+  // -------------------------------------------------
+
+  const oneTimeFees =
+    getNormalOneTimeFees(
+      student
+    );
+
+  const alreadyPaidOneTime =
+    Number(
+      paid.ADMISSION || 0
+    ) +
+    Number(
+      paid.EXAM || 0
+    ) +
+    Number(
+      paid.SPORT || 0
+    ) +
+    Number(
+      paid.COMPUTER || 0
+    ) +
+    Number(
+      paid.FUNCTION || 0
+    ) +
+    Number(
+      paid.SMART_CLASS || 0
+    ) +
+    Number(
+      paid.OTHER || 0
+    );
+
+  const remainingOneTimeFees =
+    Number(
+      Math.max(
+        oneTimeFees -
+        alreadyPaidOneTime,
+        0
+      ).toFixed(2)
+    );
+
+  // -------------------------------------------------
+  // Normal Remaining Academic Fee
+  // -------------------------------------------------
+
+  const remainingAcademicFee =
+    Number(
+      (
+        remainingMonthlyAmount +
+        remainingOneTimeFees
+      ).toFixed(2)
+    );
+
+  // -------------------------------------------------
+  // Lump Sum Monthly Fee
+  // -------------------------------------------------
+
+  const lumpSumMonthlyFee =
+    calculateLumpSumMonthlyFee(
+      student
+    );
+
+  const lumpSumMonthlyTotal =
+    Number(
+      (
+        lumpSumMonthlyFee *
+        remainingMonths
+      ).toFixed(2)
+    );
+
+  // -------------------------------------------------
+  // Additional Discount
+  // -------------------------------------------------
+
+  let additionalDiscount = 0;
+
+  if (
+    discountType === "NONE" ||
+    discountType === "GIRL"
+  ) {
+    additionalDiscount =
+      Number(
+        (
+          remainingMonthlyAmount *
+          LUMP_SUM_MONTHLY_DISCOUNT
+        ).toFixed(2)
+      );
+  }
+
+  // SIBLING:
+  // Already gets 20%.
+  // No extra lump sum discount.
+
+  if (
+    discountType === "SIBLING"
+  ) {
+    additionalDiscount = 0;
+  }
+
+  // -------------------------------------------------
+  // Final Lump Sum Amount
+  // -------------------------------------------------
+
+  const lumpSumAmount =
+    Number(
+      Math.max(
+        lumpSumMonthlyTotal +
+        remainingOneTimeFees,
+        0
+      ).toFixed(2)
+    );
+
+  // -------------------------------------------------
+  // Discount Percentage
+  // -------------------------------------------------
+
+  const monthlyDiscountPercentage =
+    discountType === "NONE" ||
+      discountType === "GIRL"
+      ? 10
+      : 0;
+
+  return {
+    eligible: true,
+
+    paymentType:
+      "LUMP_SUM",
+
+    discountType,
+
+    monthlyDiscountPercentage,
+
+    remainingMonths,
+
+    normalMonthlyFee,
+
+    lumpSumMonthlyFee,
+
+    remainingMonthlyAmount,
+
+    remainingOneTimeFees,
+
+    remainingAcademicFee,
+
+    additionalDiscount,
+
+    lumpSumAmount,
   };
+};
 
 // =====================================================
 // Validate Lump Sum Payment
@@ -1180,60 +1180,129 @@ const buildFeePaymentData = ({
 // Update Student After Payment
 // =====================================================
 
-const updateStudentAfterPayment =
-  async (
-    student,
-    paymentAmount,
-    paymentType,
-    currentDueFee
-  ) => {
-    const paidFee =
-      Number(
-        student.paidFee || 0
-      ) +
-      Number(paymentAmount);
+const updateStudentAfterPayment = async (
+  student,
+  paymentAmount,
+  paymentType,
+  currentDueFee,
+  lumpSumDetails = null
+) => {
+  const currentPaidFee = Number(student.paidFee || 0);
+  const amount = Number(paymentAmount);
 
-    let newDueFee;
+  if (
+    !Number.isFinite(currentPaidFee) ||
+    currentPaidFee < 0
+  ) {
+    throw new Error(
+      "Paid fee must be a valid non-negative number"
+    );
+  }
 
-    if (
-      paymentType ===
-      "LUMP_SUM"
-    ) {
-      newDueFee = 0;
-    } else {
-      newDueFee =
-        Math.max(
-          Number(
-            currentDueFee || 0
-          ) -
-          Number(paymentAmount),
-          0
-        );
-    }
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
+    throw new Error(
+      "Payment amount must be a valid positive number"
+    );
+  }
 
-    const updatedStudent =
-      await studentRepository.updateFee(
-        student._id,
+  const paidFee =
+    currentPaidFee + amount;
 
-        Number(
-          paidFee.toFixed(2)
-        ),
+  let newDueFee;
 
-        Number(
-          newDueFee.toFixed(2)
-        )
-      );
+  if (paymentType === "LUMP_SUM") {
+    newDueFee = 0;
+  } else {
+    newDueFee = Math.max(
+      Number(currentDueFee || 0) - amount,
+      0
+    );
+  }
 
-    if (
-      !updatedStudent
-    ) {
-      throw new Error(
-        "Failed to update student fee"
-      );
-    }
-
-    return updatedStudent;
+  const updateData = {
+    paidFee: Number(paidFee.toFixed(2)),
+    dueFee: Number(newDueFee.toFixed(2)),
   };
+
+  // =====================================================
+  // LUMP SUM FLAGS
+  // =====================================================
+
+  if (paymentType === "LUMP_SUM") {
+    updateData.lumpSumPaid = true;
+
+    // validateLumpSumPayment() se jo till date/details
+    // aa raha hai usko preserve karo
+    if (lumpSumDetails) {
+      if (lumpSumDetails.paidTill) {
+        updateData.lumpSumPaidTill =
+          lumpSumDetails.paidTill;
+      } else if (lumpSumDetails.lumpSumPaidTill) {
+        updateData.lumpSumPaidTill =
+          lumpSumDetails.lumpSumPaidTill;
+      }
+
+      if (
+        lumpSumDetails.discountType
+      ) {
+        updateData.lumpSumDiscountType =
+          lumpSumDetails.discountType;
+      }
+
+      if (
+        lumpSumDetails.discountPercent !==
+        undefined
+      ) {
+        updateData.lumpSumDiscountPercent =
+          Number(
+            lumpSumDetails.discountPercent
+          );
+      }
+
+      if (
+        lumpSumDetails.discountAmount !==
+        undefined
+      ) {
+        updateData.lumpSumDiscountAmount =
+          Number(
+            lumpSumDetails.discountAmount
+          );
+      }
+    }
+  }
+
+
+  const updatedStudent =
+    await studentRepository.updateFee(
+      student._id,
+      updateData.paidFee,
+      updateData.dueFee,
+      paymentType === "LUMP_SUM"
+        ? {
+          lumpSumPaid: true,
+          lumpSumPaidTill:
+            updateData.lumpSumPaidTill,
+          lumpSumDiscountType:
+            updateData.lumpSumDiscountType,
+          lumpSumDiscountPercent:
+            updateData.lumpSumDiscountPercent,
+          lumpSumDiscountAmount:
+            updateData.lumpSumDiscountAmount,
+        }
+        : null
+    );
+
+  if (!updatedStudent) {
+    throw new Error(
+      "Failed to update student fee"
+    );
+  }
+
+  return updatedStudent;
+};
 
 // =====================================================
 // Collect CASH Fee
@@ -1315,6 +1384,13 @@ const collectFee = async (
   // ===================================================
   // Regular Payment
   // ===================================================
+  //
+  // REGULAR payment must always
+  // be within current due fee.
+  //
+  // If dueFee = 0:
+  // payment will be rejected.
+  //
 
   if (
     finalPaymentType ===
@@ -1338,22 +1414,38 @@ const collectFee = async (
   // ===================================================
   // Lump Sum
   // ===================================================
+  //
+  // IMPORTANT:
+  //
+  // Lump Sum is NOT dependent on
+  // currentDueFee.
+  //
+  // Even if:
+  //
+  // dueFee = 0
+  //
+  // Lump Sum can still be paid
+  // if the student is eligible.
+  //
+  // validateLumpSumPayment()
+  // checks the actual Lump Sum
+  // amount and eligibility.
+  //
 
-  // ===================================================
-  // Lump Sum
-  // ===================================================
-
-  let lumpSumDetails = null;
+  let lumpSumDetails =
+    null;
 
   if (
     finalPaymentType ===
     "LUMP_SUM"
   ) {
-    // If current due is 0,
-    // Lump Sum payment is not allowed.
-    if (currentDueFee <= 0) {
+    // =================================================
+    // Already Paid Lump Sum Protection
+    // =================================================
+
+    if (student.lumpSumPaid === true) {
       const error = new Error(
-        "Amount cannot be greater than due fee. Due fee is ₹0"
+        "Lump Sum payment has already been paid for this student"
       );
 
       error.statusCode = 400;
@@ -1369,7 +1461,7 @@ const collectFee = async (
   }
 
   // ===================================================
-  // Effective Fee Head
+  // Effective Fee Head Amount
   // ===================================================
 
   const effectiveFeeHeadAmount =
@@ -1402,7 +1494,7 @@ const collectFee = async (
       );
 
   // ===================================================
-  // Create Fee
+  // Create Fee Data
   // ===================================================
 
   const feeData =
@@ -1433,6 +1525,10 @@ const collectFee = async (
 
       lumpSumDetails,
     });
+
+  // ===================================================
+  // Create Fee
+  // ===================================================
 
   const fee =
     await feeRepository.createFee(
@@ -1585,23 +1681,18 @@ const createOnlineQR = async (
     finalPaymentType ===
     "LUMP_SUM"
   ) {
-    // If current due is 0,
-    // Lump Sum payment is not allowed.
-    if (currentDueFee <= 0) {
-      const error = new Error(
-        "Amount cannot be greater than due fee. Due fee is ₹0"
-      );
-
-      error.statusCode = 400;
-
-      throw error;
+    if (
+      finalPaymentType ===
+      "LUMP_SUM"
+    ) {
+      lumpSumDetails =
+        await validateLumpSumPayment(
+          student,
+          paymentAmount
+        );
     }
 
-    lumpSumDetails =
-      await validateLumpSumPayment(
-        student,
-        paymentAmount
-      );
+
   }
 
   // ===================================================
@@ -1627,46 +1718,66 @@ const createOnlineQR = async (
   // Create Razorpay QR
   // ===================================================
 
-  const qr =
-    await razorpay.qrCode.create({
-      type:
-        "upi_qr",
+  console.log("RAZORPAY KEY:", process.env.RAZORPAY_KEY_ID);
+  console.log(
+    "RAZORPAY SECRET EXISTS:",
+    !!process.env.RAZORPAY_KEY_SECRET
+  );
 
-      name:
-        `School Fee ${student.studentId}`,
+  console.log(
+    "QR CODE OBJECT:",
+    razorpay.qrCode
+  );
 
-      usage:
-        "single_use",
+  // const qr =
+  //   await razorpay.qrCode.create({
+  //     type:
+  //       "upi_qr",
 
-      fixed_amount:
-        true,
+  //     name:
+  //       `School Fee ${student.studentId}`,
 
-      payment_amount:
-        razorpayAmount,
+  //     usage:
+  //       "single_use",
 
-      description:
-        finalPaymentType ===
-          "LUMP_SUM"
-          ? `Lump Sum School Fee Payment - ${student.studentId}`
-          : `${feeHead} Fee Payment - ${student.studentId}`,
+  //     fixed_amount:
+  //       true,
 
-      notes: {
-        studentId:
-          student.studentId,
+  //     payment_amount:
+  //       razorpayAmount,
 
-        studentMongoId:
-          student._id.toString(),
+  //     description:
+  //       finalPaymentType ===
+  //         "LUMP_SUM"
+  //         ? `Lump Sum School Fee Payment - ${student.studentId}`
+  //         : `${feeHead} Fee Payment - ${student.studentId}`,
 
-        feeHead,
+  //     notes: {
+  //       studentId:
+  //         student.studentId,
 
-        feeDiscountType:
-          student.feeDiscountType ||
-          "NONE",
+  //       studentMongoId:
+  //         student._id.toString(),
 
-        paymentType:
-          finalPaymentType,
-      },
-    });
+  //       feeHead,
+
+  //       feeDiscountType:
+  //         student.feeDiscountType ||
+  //         "NONE",
+
+  //       paymentType:
+  //         finalPaymentType,
+  //     },
+  //   });
+
+  const qr = await razorpay.qrCode.create({
+    type: "upi_qr",
+    name: `School Fee ${student.studentId}`,
+    usage: "single_use",
+    fixed_amount: true,
+    payment_amount: razorpayAmount,
+    description: `School Fee Payment - ${student.studentId}`,
+  });
 
   // ===================================================
   // Save Pending Payment
@@ -1737,8 +1848,6 @@ const createOnlineQR = async (
 
     paymentType:
       finalPaymentType,
-
-    effectiveFeeHeadAmount,
 
     lumpSumDetails:
       finalPaymentType ===
@@ -2265,33 +2374,33 @@ const getFeeHistory =
 // Receipt Details
 // =====================================================
 
-const getReceipt =  async (
-    id
-  ) => {
-    if (!id) {
-      throw new Error(
-        "Receipt ID is required"
+const getReceipt = async (
+  id
+) => {
+  if (!id) {
+    throw new Error(
+      "Receipt ID is required"
+    );
+  }
+
+  const receipt =
+    await feeRepository
+      .getReceipt(
+        id
       );
-    }
 
-    const receipt =
-      await feeRepository
-        .getReceipt(
-          id
-        );
+  if (!receipt) {
+    throw new Error(
+      "Receipt not found"
+    );
+  }
 
-    if (!receipt) {
-      throw new Error(
-        "Receipt not found"
-      );
-    }
-
-    return receipt;
-  };
+  return receipt;
+};
 
 
 
-  const getAllFeeHistory = async () => {
+const getAllFeeHistory = async () => {
   return await feeRepository.getAllFeeHistory();
 };
 
