@@ -334,7 +334,7 @@ const createStudent = async (
 // =====================================================
 
 const findByAdmissionNo = async (
-  admissionNo,
+  // admissionNo,
   name,
   fatherName,
   motherName,
@@ -342,12 +342,12 @@ const findByAdmissionNo = async (
 ) => {
   const conditions = [];
 
-  if (admissionNo) {
-    conditions.push({
-      admissionNo:
-        admissionNo.trim(),
-    });
-  }
+  // if (admissionNo) {
+  //   conditions.push({
+  //     admissionNo:
+  //       admissionNo.trim(),
+  //   });
+  // }
 
   conditions.push({
     name:

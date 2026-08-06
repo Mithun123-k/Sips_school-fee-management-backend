@@ -69,6 +69,7 @@ const createStudentValidation = [
   // Admission Number
   // ---------------------------------------------------
 
+<<<<<<< HEAD
   body("admissionNo")
     .optional()
     .trim()
@@ -76,6 +77,17 @@ const createStudentValidation = [
     .withMessage(
       "Admission number must be a string"
     ),
+=======
+  // body("admissionNo")
+  //   .optional({
+  //     values: "falsy",
+  //   })
+  //   .trim()
+  //   .isString()
+  //   .withMessage(
+  //     "Admission number must be a string"
+  //   ),
+>>>>>>> production
 
   // ---------------------------------------------------
   // Name
