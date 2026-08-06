@@ -20,13 +20,6 @@ const feeStructureRoutes = require("./routes/feeStructure.routes");
 
 const app = express();
 
-<<<<<<< HEAD
-app.use(cors({origin: [
-      "http://localhost:5173",
-      "https://sips-xi.vercel.app",
-    ],
-    credentials: true,}));
-=======
 app.use(cors({
   origin: [
     "http://localhost:5173",
@@ -34,7 +27,6 @@ app.use(cors({
   ],
   credentials: true,
 }));
->>>>>>> production
 app.use(helmet());
 app.use(morgan("dev"));
 
