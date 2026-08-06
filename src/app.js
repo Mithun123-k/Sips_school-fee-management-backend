@@ -20,7 +20,13 @@ const feeStructureRoutes = require("./routes/feeStructure.routes");
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: [
+    "http://localhost:5173",
+    "https://sips-xi.vercel.app",
+  ],
+  credentials: true,
+}));
 app.use(helmet());
 app.use(morgan("dev"));
 
@@ -38,7 +44,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/students", studentRoutes);
 app.use("/api/receptionist", userRoutes);
 app.use("/api/fees", feeRoutes);
-app.use("/api/dashboard",dashboardRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/fee-structures", feeStructureRoutes);
 
 // Error middleware ALWAYS LAST
