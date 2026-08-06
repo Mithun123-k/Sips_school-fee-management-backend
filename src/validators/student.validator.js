@@ -6,59 +6,17 @@ const { body } = require("express-validator");
 
 const feeNumberValidation = (field, label) => {
   return body(field)
-    .optional()
-    .isFloat({ min: 0 })
+    .optional({
+      values: "falsy",
+    })
+    .isFloat({
+      min: 0,
+    })
     .withMessage(
       `${label} cannot be negative`
     )
     .toFloat();
 };
-
-// =====================================================
-// Fee Fields
-// =====================================================
-
-const studentFeeValidations = [
-  feeNumberValidation(
-    "admissionFee",
-    "Admission fee"
-  ),
-
-  feeNumberValidation(
-    "monthlyFee",
-    "Monthly fee"
-  ),
-
-  feeNumberValidation(
-    "examFee",
-    "Exam fee"
-  ),
-
-  feeNumberValidation(
-    "sportFee",
-    "Sport fee"
-  ),
-
-  feeNumberValidation(
-    "computerFee",
-    "Computer fee"
-  ),
-
-  feeNumberValidation(
-    "functionFee",
-    "Function fee"
-  ),
-
-  feeNumberValidation(
-    "smartClassFee",
-    "Smart class fee"
-  ),
-
-  feeNumberValidation(
-    "otherCharges",
-    "Other charges"
-  ),
-];
 
 // =====================================================
 // Create Student Validation
@@ -69,15 +27,6 @@ const createStudentValidation = [
   // Admission Number
   // ---------------------------------------------------
 
-<<<<<<< HEAD
-  body("admissionNo")
-    .optional()
-    .trim()
-    .isString()
-    .withMessage(
-      "Admission number must be a string"
-    ),
-=======
   // body("admissionNo")
   //   .optional({
   //     values: "falsy",
@@ -87,7 +36,6 @@ const createStudentValidation = [
   //   .withMessage(
   //     "Admission number must be a string"
   //   ),
->>>>>>> production
 
   // ---------------------------------------------------
   // Name
@@ -116,7 +64,9 @@ const createStudentValidation = [
   // ---------------------------------------------------
 
   body("motherName")
-    .optional()
+    .optional({
+      values: "falsy",
+    })
     .trim()
     .isString()
     .withMessage(
@@ -196,7 +146,9 @@ const createStudentValidation = [
   // ---------------------------------------------------
 
   body("section")
-    .optional()
+    .optional({
+      values: "falsy",
+    })
     .trim()
     .isString()
     .withMessage(
@@ -208,7 +160,9 @@ const createStudentValidation = [
   // ---------------------------------------------------
 
   body("address")
-    .optional()
+    .optional({
+      values: "falsy",
+    })
     .trim()
     .isString()
     .withMessage(
@@ -229,69 +183,23 @@ const createStudentValidation = [
     ),
 
   // ===================================================
-  // Opening Due
+  // Fee Structure
   // ===================================================
+
+  feeNumberValidation(
+    "monthlyFee",
+    "Monthly fee"
+  ),
 
   feeNumberValidation(
     "openingDue",
     "Opening due"
   ),
 
-  // ===================================================
-  // Student Fee Heads
-  // ===================================================
-
-  ...studentFeeValidations,
-
-  // ===================================================
-  // Prevent Direct Total / Paid / Due
-  // ===================================================
-
-  body("totalFee")
-    .not()
-    .exists()
-    .withMessage(
-      "Total fee is calculated automatically"
-    ),
-
-  body("paidFee")
-    .not()
-    .exists()
-    .withMessage(
-      "Paid fee cannot be set during student creation"
-    ),
-
-  body("dueFee")
-    .not()
-    .exists()
-    .withMessage(
-      "Due fee is calculated automatically"
-    ),
-
-  // ---------------------------------------------------
-  // Protected Fields
-  // ---------------------------------------------------
-
-  body("studentId")
-    .not()
-    .exists()
-    .withMessage(
-      "Student ID cannot be provided directly"
-    ),
-
-  body("isDeleted")
-    .not()
-    .exists()
-    .withMessage(
-      "Delete status cannot be changed directly"
-    ),
-
-  body("createdBy")
-    .not()
-    .exists()
-    .withMessage(
-      "CreatedBy cannot be provided directly"
-    ),
+  feeNumberValidation(
+    "totalFee",
+    "Total fee"
+  ),
 ];
 
 // =====================================================
@@ -304,7 +212,9 @@ const updateStudentValidation = [
   // ---------------------------------------------------
 
   body("admissionNo")
-    .optional()
+    .optional({
+      values: "falsy",
+    })
     .trim()
     .isString()
     .withMessage(
@@ -316,7 +226,9 @@ const updateStudentValidation = [
   // ---------------------------------------------------
 
   body("name")
-    .optional()
+    .optional({
+      values: "falsy",
+    })
     .trim()
     .notEmpty()
     .withMessage(
@@ -328,7 +240,9 @@ const updateStudentValidation = [
   // ---------------------------------------------------
 
   body("fatherName")
-    .optional()
+    .optional({
+      values: "falsy",
+    })
     .trim()
     .notEmpty()
     .withMessage(
@@ -340,7 +254,9 @@ const updateStudentValidation = [
   // ---------------------------------------------------
 
   body("motherName")
-    .optional()
+    .optional({
+      values: "falsy",
+    })
     .trim()
     .isString()
     .withMessage(
@@ -352,7 +268,9 @@ const updateStudentValidation = [
   // ---------------------------------------------------
 
   body("mobile")
-    .optional()
+    .optional({
+      values: "falsy",
+    })
     .trim()
     .isMobilePhone("any")
     .withMessage(
@@ -379,7 +297,9 @@ const updateStudentValidation = [
   // ---------------------------------------------------
 
   body("gender")
-    .optional()
+    .optional({
+      values: "falsy",
+    })
     .isIn([
       "MALE",
       "FEMALE",
@@ -407,7 +327,9 @@ const updateStudentValidation = [
   // ---------------------------------------------------
 
   body("className")
-    .optional()
+    .optional({
+      values: "falsy",
+    })
     .trim()
     .notEmpty()
     .withMessage(
@@ -419,7 +341,9 @@ const updateStudentValidation = [
   // ---------------------------------------------------
 
   body("section")
-    .optional()
+    .optional({
+      values: "falsy",
+    })
     .trim()
     .isString()
     .withMessage(
@@ -431,7 +355,9 @@ const updateStudentValidation = [
   // ---------------------------------------------------
 
   body("address")
-    .optional()
+    .optional({
+      values: "falsy",
+    })
     .trim()
     .isString()
     .withMessage(
@@ -452,30 +378,44 @@ const updateStudentValidation = [
     ),
 
   // ===================================================
-  // Opening Due
+  // Fee Structure
+  // ===================================================
+  //
+  // Admin can update:
+  // - monthlyFee
+  // - totalFee
+  //
+  // Admin cannot update:
+  // - openingDue
+  // - paidFee
+  // - dueFee
+  //
   // ===================================================
 
   feeNumberValidation(
-    "openingDue",
-    "Opening due"
+    "monthlyFee",
+    "Monthly fee"
+  ),
+
+  feeNumberValidation(
+    "totalFee",
+    "Total fee"
   ),
 
   // ===================================================
-  // Student Fee Heads
+  // Prevent Opening Due Update
   // ===================================================
 
-  ...studentFeeValidations,
-
-  // ===================================================
-  // Protected Fee Fields
-  // ===================================================
-
-  body("totalFee")
+  body("openingDue")
     .not()
     .exists()
     .withMessage(
-      "Total fee is calculated automatically"
+      "Opening due cannot be updated directly"
     ),
+
+  // ===================================================
+  // Prevent Paid Fee Update
+  // ===================================================
 
   body("paidFee")
     .not()
@@ -483,6 +423,10 @@ const updateStudentValidation = [
     .withMessage(
       "Paid fee cannot be updated directly"
     ),
+
+  // ===================================================
+  // Prevent Due Fee Update
+  // ===================================================
 
   body("dueFee")
     .not()
@@ -492,8 +436,8 @@ const updateStudentValidation = [
     ),
 
   // ===================================================
-  // Protected Student Fields
-  // ===================================================
+  // Prevent Student ID Change
+  // =====================================================
 
   body("studentId")
     .not()
@@ -502,6 +446,10 @@ const updateStudentValidation = [
       "Student ID cannot be changed"
     ),
 
+  // ===================================================
+  // Prevent Delete Status Change
+  // ===================================================
+
   body("isDeleted")
     .not()
     .exists()
@@ -509,11 +457,26 @@ const updateStudentValidation = [
       "Delete status cannot be changed directly"
     ),
 
+  // ===================================================
+  // Prevent CreatedBy Change
+  // ===================================================
+
   body("createdBy")
     .not()
     .exists()
     .withMessage(
       "CreatedBy cannot be changed directly"
+    ),
+
+  // ===================================================
+  // Prevent UpdatedBy Change
+  // ===================================================
+
+  body("updatedBy")
+    .not()
+    .exists()
+    .withMessage(
+      "UpdatedBy cannot be changed directly"
     ),
 ];
 
