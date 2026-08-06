@@ -266,7 +266,7 @@ const calculateStudentTotalFee = (
   return Number(
     Math.max(
       effectiveFeeTotal +
-        finalOpeningDue,
+      finalOpeningDue,
       0
     ).toFixed(2)
   );
@@ -311,7 +311,7 @@ const calculateStudentDueFee = (
   return Number(
     Math.max(
       finalTotalFee -
-        finalPaidFee,
+      finalPaidFee,
       0
     ).toFixed(2)
   );
@@ -494,7 +494,8 @@ const searchStudent = async (
 const updateFee = async (
   id,
   paidFee,
-  dueFee
+  dueFee,
+  lumpSumData = null
 ) => {
   const finalPaidFee =
     Number(paidFee);
@@ -532,11 +533,22 @@ const updateFee = async (
     },
     {
       $set: {
-        paidFee:
-          finalPaidFee,
+        paidFee: finalPaidFee,
+        dueFee: finalDueFee,
 
-        dueFee:
-          finalDueFee,
+        ...(lumpSumData
+          ? {
+            lumpSumPaid: lumpSumData.lumpSumPaid,
+            lumpSumPaidTill:
+              lumpSumData.lumpSumPaidTill,
+            lumpSumDiscountType:
+              lumpSumData.lumpSumDiscountType,
+            lumpSumDiscountPercent:
+              lumpSumData.lumpSumDiscountPercent,
+            lumpSumDiscountAmount:
+              lumpSumData.lumpSumDiscountAmount,
+          }
+          : {}),
       },
     },
     {
@@ -761,83 +773,83 @@ const updateIndividualStudentFees =
 
     const admissionFee =
       feeData.admissionFee !==
-      undefined
+        undefined
         ? Number(
-            feeData.admissionFee
-          )
+          feeData.admissionFee
+        )
         : Number(
-            student.admissionFee || 0
-          );
+          student.admissionFee || 0
+        );
 
     const monthlyFee =
       feeData.monthlyFee !==
-      undefined
+        undefined
         ? Number(
-            feeData.monthlyFee
-          )
+          feeData.monthlyFee
+        )
         : Number(
-            student.monthlyFee || 0
-          );
+          student.monthlyFee || 0
+        );
 
     const examFee =
       feeData.examFee !==
-      undefined
+        undefined
         ? Number(
-            feeData.examFee
-          )
+          feeData.examFee
+        )
         : Number(
-            student.examFee || 0
-          );
+          student.examFee || 0
+        );
 
     const sportFee =
       feeData.sportFee !==
-      undefined
+        undefined
         ? Number(
-            feeData.sportFee
-          )
+          feeData.sportFee
+        )
         : Number(
-            student.sportFee || 0
-          );
+          student.sportFee || 0
+        );
 
     const computerFee =
       feeData.computerFee !==
-      undefined
+        undefined
         ? Number(
-            feeData.computerFee
-          )
+          feeData.computerFee
+        )
         : Number(
-            student.computerFee || 0
-          );
+          student.computerFee || 0
+        );
 
     const functionFee =
       feeData.functionFee !==
-      undefined
+        undefined
         ? Number(
-            feeData.functionFee
-          )
+          feeData.functionFee
+        )
         : Number(
-            student.functionFee || 0
-          );
+          student.functionFee || 0
+        );
 
     const smartClassFee =
       feeData.smartClassFee !==
-      undefined
+        undefined
         ? Number(
-            feeData.smartClassFee
-          )
+          feeData.smartClassFee
+        )
         : Number(
-            student.smartClassFee || 0
-          );
+          student.smartClassFee || 0
+        );
 
     const otherCharges =
       feeData.otherCharges !==
-      undefined
+        undefined
         ? Number(
-            feeData.otherCharges
-          )
+          feeData.otherCharges
+        )
         : Number(
-            student.otherCharges || 0
-          );
+          student.otherCharges || 0
+        );
 
     const normalizedFees =
       normalizeFeeValues({
