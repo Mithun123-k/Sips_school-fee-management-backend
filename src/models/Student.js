@@ -236,6 +236,16 @@ const studentSchema = new mongoose.Schema(
     // Fee Calculation Start Date
     // =====================================================
 
+    feeStartFrom: {
+      type: String,
+      enum: [
+        "ADMISSION_DATE",
+        "NEXT_MONTH",
+        "CUSTOM",
+      ],
+      default: "NEXT_MONTH",
+    },
+
     feeStartDate: {
       type: Date,
     },

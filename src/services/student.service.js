@@ -46,7 +46,8 @@ const FEE_HEADS = [
 // =====================================================
 
 const calculateFeeStartDate = (
-  admissionDate
+  admissionDate,
+  feeStartFrom = "NEXT_MONTH"
 ) => {
   const date =
     new Date(admissionDate);
@@ -75,6 +76,14 @@ const calculateFeeStartDate = (
   // ===================================================
   // PRODUCTION MODE
   // ===================================================
+
+  if (feeStartFrom === "ADMISSION_DATE") {
+    return new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate()
+    );
+  }
 
   return new Date(
     date.getFullYear(),
@@ -1039,7 +1048,8 @@ const createStudent = async (
     openingDue,
 
     feeDiscountType,
-    
+    feeStartFrom,
+
 
   } = body;
 
@@ -1080,8 +1090,8 @@ const createStudent = async (
 
   const studentId =
     await generateStudentId();
-    
-    const admissionNo = await generateAdmissionNo();
+
+  const admissionNo = await generateAdmissionNo();
 
   // ===================================================
   // Admission Date
@@ -1165,10 +1175,120 @@ const createStudent = async (
   // Fee Start Date
   // ===================================================
 
-  const feeStartDate =
+  // const feeStartDate =
+  //   calculateFeeStartDate(
+  //     finalAdmissionDate
+  //   );
+
+
+  const finalFeeStartFrom =
+    feeStartFrom || "NEXT_MONTH";
+
+  if (
+    ![
+      "ADMISSION_DATE",
+      "NEXT_MONTH",
+      "CUSTOM",
+    ].includes(finalFeeStartFrom)
+  ) {
+    throw new Error(
+      "Invalid fee start option"
+    );
+  }
+
+  let feeStartDate;
+
+if (
+  finalFeeStartFrom ===
+  "ADMISSION_DATE"
+) {
+  feeStartDate =
+    new Date(finalAdmissionDate);
+
+} else if (
+  finalFeeStartFrom ===
+  "NEXT_MONTH"
+) {
+  feeStartDate =
     calculateFeeStartDate(
       finalAdmissionDate
     );
+
+} else if (
+  finalFeeStartFrom ===
+  "CUSTOM"
+) {
+  if (!body.feeStartDate) {
+    throw new Error(
+      "Fee start date is required for CUSTOM option"
+    );
+  }
+
+  feeStartDate =
+    new Date(body.feeStartDate);
+
+  if (
+    Number.isNaN(
+      feeStartDate.getTime()
+    )
+  ) {
+    throw new Error(
+      "Invalid fee start date"
+    );
+  }
+}
+
+  // let feeStartDate;
+
+  // if (
+  //   finalFeeStartFrom ===
+  //   "ADMISSION_DATE"
+  // ) {
+  //   feeStartDate =
+  //     new Date(finalAdmissionDate);
+  // } else if (
+  //   finalFeeStartFrom ===
+  //   "NEXT_MONTH"
+  // ) {
+  //   feeStartDate =
+  //     calculateFeeStartDate(
+  //       finalAdmissionDate
+  //     );
+  // } else {
+  //   if (!body.feeStartDate) {
+  //     throw new Error(
+  //       "Fee start date is required for CUSTOM option"
+  //     );
+  //   }
+
+  //   feeStartDate =
+  //     new Date(body.feeStartDate);
+
+  //   if (
+  //     Number.isNaN(
+  //       feeStartDate.getTime()
+  //     )
+  //   ) {
+  //     throw new Error(
+  //       "Invalid fee start date"
+  //     );
+  //   }
+  // }
+
+  // let feeStartDate;
+
+  // if (
+  //   finalFeeStartFrom ===
+  //   "ADMISSION_DATE"
+  // ) {
+  //   feeStartDate =
+  //     new Date(finalAdmissionDate);
+  // } else {
+  //   feeStartDate =
+  //     calculateFeeStartDate(
+  //       finalAdmissionDate
+  //     );
+  // }
 
   // ===================================================
   // Create Student
@@ -1243,6 +1363,8 @@ const createStudent = async (
       paidFee,
 
       dueFee,
+
+      feeStartFrom: finalFeeStartFrom,
 
       feeStartDate,
 

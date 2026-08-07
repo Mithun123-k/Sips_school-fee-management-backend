@@ -182,6 +182,17 @@ const createStudentValidation = [
       "Invalid admission date"
     ),
 
+  body("feeStartFrom")
+    .optional()
+    .isIn([
+      "ADMISSION_DATE",
+      "NEXT_MONTH",
+      "CUSTOM",
+    ])
+    .withMessage(
+      "Invalid fee start option"
+    ),
+
   // ===================================================
   // Fee Structure
   // ===================================================
@@ -375,6 +386,16 @@ const updateStudentValidation = [
     .isISO8601()
     .withMessage(
       "Invalid admission date"
+    ),
+
+  body("feeStartFrom")
+    .optional()
+    .isIn([
+      "ADMISSION_DATE",
+      "NEXT_MONTH",
+    ])
+    .withMessage(
+      "Invalid fee start option"
     ),
 
   // ===================================================
