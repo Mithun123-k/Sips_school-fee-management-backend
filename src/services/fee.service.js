@@ -1729,55 +1729,55 @@ const createOnlineQR = async (
     razorpay.qrCode
   );
 
-  // const qr =
-  //   await razorpay.qrCode.create({
-  //     type:
-  //       "upi_qr",
+  const qr =
+    await razorpay.qrCode.create({
+      type:
+        "upi_qr",
 
-  //     name:
-  //       `School Fee ${student.studentId}`,
+      name:
+        `School Fee ${student.studentId}`,
 
-  //     usage:
-  //       "single_use",
+      usage:
+        "single_use",
 
-  //     fixed_amount:
-  //       true,
+      fixed_amount:
+        true,
 
-  //     payment_amount:
-  //       razorpayAmount,
+      payment_amount:
+        razorpayAmount,
 
-  //     description:
-  //       finalPaymentType ===
-  //         "LUMP_SUM"
-  //         ? `Lump Sum School Fee Payment - ${student.studentId}`
-  //         : `${feeHead} Fee Payment - ${student.studentId}`,
+      description:
+        finalPaymentType ===
+          "LUMP_SUM"
+          ? `Lump Sum School Fee Payment - ${student.studentId}`
+          : `${feeHead} Fee Payment - ${student.studentId}`,
 
-  //     notes: {
-  //       studentId:
-  //         student.studentId,
+      notes: {
+        studentId:
+          student.studentId,
 
-  //       studentMongoId:
-  //         student._id.toString(),
+        studentMongoId:
+          student._id.toString(),
 
-  //       feeHead,
+        feeHead,
 
-  //       feeDiscountType:
-  //         student.feeDiscountType ||
-  //         "NONE",
+        feeDiscountType:
+          student.feeDiscountType ||
+          "NONE",
 
-  //       paymentType:
-  //         finalPaymentType,
-  //     },
-  //   });
+        paymentType:
+          finalPaymentType,
+      },
+    });
 
-  const qr = await razorpay.qrCode.create({
-    type: "upi_qr",
-    name: `School Fee ${student.studentId}`,
-    usage: "single_use",
-    fixed_amount: true,
-    payment_amount: razorpayAmount,
-    description: `School Fee Payment - ${student.studentId}`,
-  });
+  // const qr = await razorpay.qrCode.create({
+  //   type: "upi_qr",
+  //   name: `School Fee ${student.studentId}`,
+  //   usage: "single_use",
+  //   fixed_amount: true,
+  //   payment_amount: razorpayAmount,
+  //   description: `School Fee Payment - ${student.studentId}`,
+  // });
 
   // ===================================================
   // Save Pending Payment
