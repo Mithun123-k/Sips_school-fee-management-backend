@@ -1199,45 +1199,45 @@ const createStudent = async (
 
   let feeStartDate;
 
-if (
-  finalFeeStartFrom ===
-  "ADMISSION_DATE"
-) {
-  feeStartDate =
-    new Date(finalAdmissionDate);
-
-} else if (
-  finalFeeStartFrom ===
-  "NEXT_MONTH"
-) {
-  feeStartDate =
-    calculateFeeStartDate(
-      finalAdmissionDate
-    );
-
-} else if (
-  finalFeeStartFrom ===
-  "CUSTOM"
-) {
-  if (!body.feeStartDate) {
-    throw new Error(
-      "Fee start date is required for CUSTOM option"
-    );
-  }
-
-  feeStartDate =
-    new Date(body.feeStartDate);
-
   if (
-    Number.isNaN(
-      feeStartDate.getTime()
-    )
+    finalFeeStartFrom ===
+    "ADMISSION_DATE"
   ) {
-    throw new Error(
-      "Invalid fee start date"
-    );
+    feeStartDate =
+      new Date(finalAdmissionDate);
+
+  } else if (
+    finalFeeStartFrom ===
+    "NEXT_MONTH"
+  ) {
+    feeStartDate =
+      calculateFeeStartDate(
+        finalAdmissionDate
+      );
+
+  } else if (
+    finalFeeStartFrom ===
+    "CUSTOM"
+  ) {
+    if (!body.feeStartDate) {
+      throw new Error(
+        "Fee start date is required for CUSTOM option"
+      );
+    }
+
+    feeStartDate =
+      new Date(body.feeStartDate);
+
+    if (
+      Number.isNaN(
+        feeStartDate.getTime()
+      )
+    ) {
+      throw new Error(
+        "Invalid fee start date"
+      );
+    }
   }
-}
 
   // let feeStartDate;
 
@@ -1485,6 +1485,7 @@ const updateStudent = async (
     ...updateData
   } = body;
 
+  // These fields cannot be updated directly
   delete updateData.paidFee;
   delete updateData.dueFee;
   delete updateData.totalFee;
@@ -1532,11 +1533,139 @@ const updateStudent = async (
 
     updateData.admissionDate =
       newAdmissionDate;
+  }
 
-    updateData.feeStartDate =
-      calculateFeeStartDate(
-        newAdmissionDate
+  // ===================================================
+  // Fee Start From / Fee Start Date
+  //
+  // Supported:
+  // ADMISSION_DATE
+  // NEXT_MONTH
+  // CUSTOM
+  // ===================================================
+
+  if (
+    updateData.feeStartFrom !==
+    undefined ||
+    updateData.feeStartDate !==
+    undefined ||
+    updateData.admissionDate !==
+    undefined
+  ) {
+    const finalFeeStartFrom =
+      updateData.feeStartFrom ??
+      student.feeStartFrom ??
+      "NEXT_MONTH";
+
+    // -------------------------------------------------
+    // Validate Fee Start Option
+    // -------------------------------------------------
+
+    if (
+      ![
+        "ADMISSION_DATE",
+        "NEXT_MONTH",
+        "CUSTOM",
+      ].includes(
+        finalFeeStartFrom
+      )
+    ) {
+      throw new Error(
+        "Invalid fee start option"
       );
+    }
+
+    // -------------------------------------------------
+    // Final Admission Date
+    // -------------------------------------------------
+
+    const finalAdmissionDate =
+      updateData.admissionDate
+        ? new Date(
+          updateData.admissionDate
+        )
+        : new Date(
+          student.admissionDate
+        );
+
+    if (
+      Number.isNaN(
+        finalAdmissionDate.getTime()
+      )
+    ) {
+      throw new Error(
+        "Invalid admission date"
+      );
+    }
+
+    // -------------------------------------------------
+    // ADMISSION_DATE
+    // -------------------------------------------------
+
+    if (
+      finalFeeStartFrom ===
+      "ADMISSION_DATE"
+    ) {
+      updateData.feeStartDate =
+        new Date(
+          finalAdmissionDate
+        );
+    }
+
+    // -------------------------------------------------
+    // NEXT_MONTH
+    // -------------------------------------------------
+
+    else if (
+      finalFeeStartFrom ===
+      "NEXT_MONTH"
+    ) {
+      updateData.feeStartDate =
+        calculateFeeStartDate(
+          finalAdmissionDate
+        );
+    }
+
+    // -------------------------------------------------
+    // CUSTOM
+    // -------------------------------------------------
+
+    else if (
+      finalFeeStartFrom ===
+      "CUSTOM"
+    ) {
+      const customFeeStartDate =
+        updateData.feeStartDate
+          ? new Date(
+            updateData.feeStartDate
+          )
+          : student.feeStartDate
+            ? new Date(
+              student.feeStartDate
+            )
+            : null;
+
+      if (
+        !customFeeStartDate ||
+        Number.isNaN(
+          customFeeStartDate.getTime()
+        )
+      ) {
+        throw new Error(
+          "Valid fee start date is required for CUSTOM option"
+        );
+      }
+
+      updateData.feeStartDate =
+        customFeeStartDate;
+    }
+
+    // -------------------------------------------------
+    // Save Fee Start Option
+    // -------------------------------------------------
+
+    updateData.feeStartFrom =
+      finalFeeStartFrom;
   }
 
   // ===================================================

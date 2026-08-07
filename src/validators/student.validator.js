@@ -393,6 +393,7 @@ const updateStudentValidation = [
     .isIn([
       "ADMISSION_DATE",
       "NEXT_MONTH",
+      "CUSTOM",
     ])
     .withMessage(
       "Invalid fee start option"
