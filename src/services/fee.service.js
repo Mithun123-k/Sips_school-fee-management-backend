@@ -572,63 +572,176 @@ const getAcademicYear = (
 //
 // =====================================================
 
+// const getRemainingAcademicMonths = (
+//   currentDate = new Date()
+// ) => {
+//   const today =
+//     new Date(currentDate);
+
+//   if (
+//     Number.isNaN(
+//       today.getTime()
+//     )
+//   ) {
+//     throw new Error(
+//       "Invalid current date"
+//     );
+//   }
+
+//   const academicYear =
+//     getAcademicYear(
+//       today
+//     );
+
+//   const currentMonth =
+//     today.getMonth();
+
+//   const currentYear =
+//     today.getFullYear();
+
+//   const currentMonthDate =
+//     new Date(
+//       currentYear,
+//       currentMonth,
+//       1
+//     );
+
+//   const academicEndDate =
+//     new Date(
+//       academicYear.endYear,
+//       2,
+//       1
+//     );
+
+//   if (
+//     currentMonthDate >
+//     academicEndDate
+//   ) {
+//     return 0;
+//   }
+
+//   const months =
+//     (
+//       academicEndDate.getFullYear() -
+//       currentMonthDate.getFullYear()
+//     ) *
+//     12 +
+//     (
+//       academicEndDate.getMonth() -
+//       currentMonthDate.getMonth()
+//     ) +
+//     1;
+
+//   return Math.max(
+//     months,
+//     0
+//   );
+// };
+
 const getRemainingAcademicMonths = (
+  student,
   currentDate = new Date()
 ) => {
-  const today =
-    new Date(currentDate);
+  const today = new Date(currentDate);
 
-  if (
-    Number.isNaN(
-      today.getTime()
-    )
-  ) {
-    throw new Error(
-      "Invalid current date"
-    );
+  if (Number.isNaN(today.getTime())) {
+    throw new Error("Invalid current date");
   }
 
+  const feeStartDate = new Date(
+    student.feeStartDate
+  );
+
+  if (Number.isNaN(feeStartDate.getTime())) {
+    throw new Error("Invalid fee start date");
+  }
+
+  // =====================================
+  // Academic Year
+  // =====================================
+
   const academicYear =
-    getAcademicYear(
-      today
-    );
+    getAcademicYear(today);
 
-  const currentMonth =
-    today.getMonth();
+  // =====================================
+  // Academic Year Start
+  // =====================================
 
-  const currentYear =
-    today.getFullYear();
+  const academicStartDate = new Date(
+    academicYear.startYear,
+    3, // April
+    1
+  );
 
-  const currentMonthDate =
-    new Date(
-      currentYear,
-      currentMonth,
-      1
-    );
+  // =====================================
+  // Academic Year End
+  // =====================================
 
-  const academicEndDate =
-    new Date(
-      academicYear.endYear,
-      2,
-      1
-    );
+  const academicEndDate = new Date(
+    academicYear.endYear,
+    2, // March
+    1
+  );
+
+  // =====================================
+  // Fee Start Month
+  // =====================================
+
+  const feeStartMonth = new Date(
+    feeStartDate.getFullYear(),
+    feeStartDate.getMonth(),
+    1
+  );
+
+  // =====================================
+  // Current Month
+  // =====================================
+
+  const currentMonth = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    1
+  );
+
+  // =====================================
+  // Effective Start Month
+  //
+  // Future fee start:
+  // use feeStartMonth
+  //
+  // Already started:
+  // use current month
+  // =====================================
+
+  const effectiveStart =
+    feeStartMonth > currentMonth
+      ? feeStartMonth
+      : currentMonth;
+
+  // =====================================
+  // Outside Academic Year
+  // =====================================
 
   if (
-    currentMonthDate >
-    academicEndDate
+    effectiveStart < academicStartDate ||
+    effectiveStart > academicEndDate
   ) {
     return 0;
   }
 
+  // =====================================
+  // Calculate remaining months
+  // =====================================
+
   const months =
     (
       academicEndDate.getFullYear() -
-      currentMonthDate.getFullYear()
+      effectiveStart.getFullYear()
     ) *
-    12 +
+      12 +
     (
       academicEndDate.getMonth() -
-      currentMonthDate.getMonth()
+      effectiveStart.getMonth()
     ) +
     1;
 
@@ -783,6 +896,253 @@ const getPaidFeeHeadAmounts = async (
 // Calculate Lump Sum Details
 // =====================================================
 
+// const calculateLumpSumDetails = async (
+//   student,
+//   currentDate = new Date()
+// ) => {
+//   const discountType =
+//     validateFeeDiscountType(
+//       student.feeDiscountType
+//     );
+
+//   // -------------------------------------------------
+//   // Availability
+//   // -------------------------------------------------
+
+//   if (
+//     !isLumpSumAvailable(
+//       currentDate
+//     )
+//   ) {
+//     throw new Error(
+//       "Lump Sum discount is available only from April to August"
+//     );
+//   }
+
+//   // -------------------------------------------------
+//   // RTE
+//   // -------------------------------------------------
+
+//   if (
+//     discountType === "RTE"
+//   ) {
+//     return {
+//       eligible: false,
+
+//       reason:
+//         "RTE student already has 100% fee discount",
+
+//       paymentType:
+//         "LUMP_SUM",
+
+//       discountType,
+
+//       monthlyDiscountPercentage: 0,
+
+//       remainingMonths: 0,
+
+//       normalMonthlyFee: 0,
+
+//       lumpSumMonthlyFee: 0,
+
+//       remainingMonthlyAmount: 0,
+
+//       remainingOneTimeFees: 0,
+
+//       remainingAcademicFee: 0,
+
+//       additionalDiscount: 0,
+
+//       lumpSumAmount: 0,
+//     };
+//   }
+
+//   // -------------------------------------------------
+//   // Paid History
+//   // -------------------------------------------------
+
+//   const paid =
+//     await getPaidFeeHeadAmounts(
+//       student
+//     );
+
+//   // -------------------------------------------------
+//   // Remaining Months
+//   // -------------------------------------------------
+
+//   const remainingMonths =
+//     getRemainingAcademicMonths(
+//       currentDate
+//     );
+
+//   // -------------------------------------------------
+//   // Monthly Fee
+//   // -------------------------------------------------
+
+//   const normalMonthlyFee =
+//     getNormalMonthlyFee(
+//       student
+//     );
+
+//   const remainingMonthlyAmount =
+//     Number(
+//       (
+//         normalMonthlyFee *
+//         remainingMonths
+//       ).toFixed(2)
+//     );
+
+//   // -------------------------------------------------
+//   // One-Time Fees
+//   // -------------------------------------------------
+
+//   const oneTimeFees =
+//     getNormalOneTimeFees(
+//       student
+//     );
+
+//   const alreadyPaidOneTime =
+//     Number(
+//       paid.ADMISSION || 0
+//     ) +
+//     Number(
+//       paid.EXAM || 0
+//     ) +
+//     Number(
+//       paid.SPORT || 0
+//     ) +
+//     Number(
+//       paid.COMPUTER || 0
+//     ) +
+//     Number(
+//       paid.FUNCTION || 0
+//     ) +
+//     Number(
+//       paid.SMART_CLASS || 0
+//     ) +
+//     Number(
+//       paid.OTHER || 0
+//     );
+
+//   const remainingOneTimeFees =
+//     Number(
+//       Math.max(
+//         oneTimeFees -
+//         alreadyPaidOneTime,
+//         0
+//       ).toFixed(2)
+//     );
+
+//   // -------------------------------------------------
+//   // Normal Remaining Academic Fee
+//   // -------------------------------------------------
+
+//   const remainingAcademicFee =
+//     Number(
+//       (
+//         remainingMonthlyAmount +
+//         remainingOneTimeFees
+//       ).toFixed(2)
+//     );
+
+//   // -------------------------------------------------
+//   // Lump Sum Monthly Fee
+//   // -------------------------------------------------
+
+//   const lumpSumMonthlyFee =
+//     calculateLumpSumMonthlyFee(
+//       student
+//     );
+
+//   const lumpSumMonthlyTotal =
+//     Number(
+//       (
+//         lumpSumMonthlyFee *
+//         remainingMonths
+//       ).toFixed(2)
+//     );
+
+//   // -------------------------------------------------
+//   // Additional Discount
+//   // -------------------------------------------------
+
+//   let additionalDiscount = 0;
+
+//   if (
+//     discountType === "NONE" ||
+//     discountType === "GIRL"
+//   ) {
+//     additionalDiscount =
+//       Number(
+//         (
+//           remainingMonthlyAmount *
+//           LUMP_SUM_MONTHLY_DISCOUNT
+//         ).toFixed(2)
+//       );
+//   }
+
+//   // SIBLING:
+//   // Already gets 20%.
+//   // No extra lump sum discount.
+
+//   if (
+//     discountType === "SIBLING"
+//   ) {
+//     additionalDiscount = 0;
+//   }
+
+//   // -------------------------------------------------
+//   // Final Lump Sum Amount
+//   // -------------------------------------------------
+
+//   const lumpSumAmount =
+//     Number(
+//       Math.max(
+//         lumpSumMonthlyTotal +
+//         remainingOneTimeFees,
+//         0
+//       ).toFixed(2)
+//     );
+
+//   // -------------------------------------------------
+//   // Discount Percentage
+//   // -------------------------------------------------
+
+//   const monthlyDiscountPercentage =
+//     discountType === "NONE" ||
+//       discountType === "GIRL"
+//       ? 10
+//       : 0;
+
+//   return {
+//     eligible: true,
+
+//     paymentType:
+//       "LUMP_SUM",
+
+//     discountType,
+
+//     monthlyDiscountPercentage,
+
+//     remainingMonths,
+
+//     normalMonthlyFee,
+
+//     lumpSumMonthlyFee,
+
+//     remainingMonthlyAmount,
+
+//     remainingOneTimeFees,
+
+//     remainingAcademicFee,
+
+//     additionalDiscount,
+
+//     lumpSumAmount,
+//   };
+// };
+
+
 const calculateLumpSumDetails = async (
   student,
   currentDate = new Date()
@@ -854,22 +1214,163 @@ const calculateLumpSumDetails = async (
     );
 
   // -------------------------------------------------
+  // Fee Start Date
+  // -------------------------------------------------
+
+  const feeStartDate =
+    student.feeStartDate
+      ? new Date(
+          student.feeStartDate
+        )
+      : null;
+
+  if (
+    !feeStartDate ||
+    Number.isNaN(
+      feeStartDate.getTime()
+    )
+  ) {
+    return {
+      eligible: false,
+
+      reason:
+        "Fee start date is not configured for this student",
+
+      paymentType:
+        "LUMP_SUM",
+
+      discountType,
+
+      monthlyDiscountPercentage: 0,
+
+      remainingMonths: 0,
+
+      normalMonthlyFee: 0,
+
+      lumpSumMonthlyFee: 0,
+
+      remainingMonthlyAmount: 0,
+
+      remainingOneTimeFees: 0,
+
+      remainingAcademicFee: 0,
+
+      additionalDiscount: 0,
+
+      lumpSumAmount: 0,
+    };
+  }
+
+  // -------------------------------------------------
+  // Academic Year
+  //
+  // April -> March
+  // -------------------------------------------------
+
+  const currentYear =
+    currentDate.getFullYear();
+
+  const currentMonth =
+    currentDate.getMonth();
+
+  const academicYearStartYear =
+    currentMonth < 3
+      ? currentYear - 1
+      : currentYear;
+
+  const academicYearStartDate =
+    new Date(
+      academicYearStartYear,
+      3,
+      1
+    );
+
+  const academicYearEnd =
+    new Date(
+      academicYearStartYear + 1,
+      2,
+      1
+    );
+
+  // -------------------------------------------------
+  // Effective Fee Start
+  // -------------------------------------------------
+
+  const effectiveStartDate =
+    feeStartDate >
+    academicYearStartDate
+      ? feeStartDate
+      : academicYearStartDate;
+
+  // -------------------------------------------------
+  // Total Academic Months
+  // -------------------------------------------------
+
+  const totalAcademicMonths =
+    (
+      academicYearEnd.getFullYear() -
+      effectiveStartDate.getFullYear()
+    ) *
+      12 +
+    (
+      academicYearEnd.getMonth() -
+      effectiveStartDate.getMonth()
+    ) +
+    1;
+
+  // -------------------------------------------------
+  // Normal Monthly Fee
+  // IMPORTANT:
+  // Get ORIGINAL monthly fee.
+  // Do NOT use discounted monthly fee here.
+  // -------------------------------------------------
+
+  const normalMonthlyFee =
+    Number(
+      student.monthlyFee || 0
+    );
+
+  // -------------------------------------------------
+  // Already Paid Monthly Fee
+  // -------------------------------------------------
+
+  const monthlyPaid =
+    Number(
+      paid.MONTHLY || 0
+    );
+
+  // -------------------------------------------------
+  // Already Paid Months
+  // -------------------------------------------------
+
+  const alreadyPaidMonths =
+    normalMonthlyFee > 0
+      ? Math.floor(
+          monthlyPaid /
+            normalMonthlyFee
+        )
+      : 0;
+
+  // -------------------------------------------------
   // Remaining Months
   // -------------------------------------------------
 
   const remainingMonths =
-    getRemainingAcademicMonths(
-      currentDate
+    Math.max(
+      totalAcademicMonths -
+        alreadyPaidMonths,
+      0
     );
 
   // -------------------------------------------------
-  // Monthly Fee
+  // Remaining Monthly Amount
+  //
+  // Example:
+  // ₹1300 × 9 months
+  // = ₹11,700
+  //
+  // NO DISCOUNT HERE
   // -------------------------------------------------
-
-  const normalMonthlyFee =
-    getNormalMonthlyFee(
-      student
-    );
 
   const remainingMonthlyAmount =
     Number(
@@ -915,7 +1416,7 @@ const calculateLumpSumDetails = async (
     Number(
       Math.max(
         oneTimeFees -
-        alreadyPaidOneTime,
+          alreadyPaidOneTime,
         0
       ).toFixed(2)
     );
@@ -933,24 +1434,21 @@ const calculateLumpSumDetails = async (
     );
 
   // -------------------------------------------------
-  // Lump Sum Monthly Fee
-  // -------------------------------------------------
-
-  const lumpSumMonthlyFee =
-    calculateLumpSumMonthlyFee(
-      student
-    );
-
-  const lumpSumMonthlyTotal =
-    Number(
-      (
-        lumpSumMonthlyFee *
-        remainingMonths
-      ).toFixed(2)
-    );
-
-  // -------------------------------------------------
-  // Additional Discount
+  // Lump Sum Discount
+  //
+  // IMPORTANT:
+  //
+  // Discount is calculated ONCE
+  // on the TOTAL remaining monthly fee.
+  //
+  // Example:
+  //
+  // ₹1300 × 9 = ₹11,700
+  // 10% = ₹1,170
+  // Final = ₹10,530
+  //
+  // NOT:
+  // ₹1170 × 9
   // -------------------------------------------------
 
   let additionalDiscount = 0;
@@ -968,9 +1466,12 @@ const calculateLumpSumDetails = async (
       );
   }
 
-  // SIBLING:
-  // Already gets 20%.
-  // No extra lump sum discount.
+  // -------------------------------------------------
+  // SIBLING
+  //
+  // Already gets 20% discount.
+  // No additional Lump Sum discount.
+  // -------------------------------------------------
 
   if (
     discountType === "SIBLING"
@@ -979,14 +1480,30 @@ const calculateLumpSumDetails = async (
   }
 
   // -------------------------------------------------
+  // Final Monthly Amount
+  // -------------------------------------------------
+
+  const discountedMonthlyAmount =
+    Math.max(
+      remainingMonthlyAmount -
+        additionalDiscount,
+      0
+    );
+
+  // -------------------------------------------------
   // Final Lump Sum Amount
+  //
+  // Monthly remaining amount after
+  // one-time 10% discount
+  // +
+  // remaining one-time fees
   // -------------------------------------------------
 
   const lumpSumAmount =
     Number(
       Math.max(
-        lumpSumMonthlyTotal +
-        remainingOneTimeFees,
+        discountedMonthlyAmount +
+          remainingOneTimeFees,
         0
       ).toFixed(2)
     );
@@ -997,9 +1514,13 @@ const calculateLumpSumDetails = async (
 
   const monthlyDiscountPercentage =
     discountType === "NONE" ||
-      discountType === "GIRL"
+    discountType === "GIRL"
       ? 10
       : 0;
+
+  // -------------------------------------------------
+  // Response
+  // -------------------------------------------------
 
   return {
     eligible: true,
@@ -1011,11 +1532,15 @@ const calculateLumpSumDetails = async (
 
     monthlyDiscountPercentage,
 
+    feeStartDate,
+
+    totalAcademicMonths,
+
+    alreadyPaidMonths,
+
     remainingMonths,
 
     normalMonthlyFee,
-
-    lumpSumMonthlyFee,
 
     remainingMonthlyAmount,
 
@@ -1025,10 +1550,11 @@ const calculateLumpSumDetails = async (
 
     additionalDiscount,
 
+    discountedMonthlyAmount,
+
     lumpSumAmount,
   };
 };
-
 // =====================================================
 // Validate Lump Sum Payment
 // =====================================================
