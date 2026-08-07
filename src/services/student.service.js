@@ -7,6 +7,7 @@ const feeRepository =
 const generateStudentId =
   require("../utils/generateStudentId");
 const generateAdmissionNo = require("../utils/generateAdmission");
+const { getLumpSumPreview } = require("./fee.service");
 
 // =====================================================
 // Constants
@@ -1875,6 +1876,21 @@ const searchStudent = async (
       student
     );
 
+    const lumpSumPreview =
+  await getLumpSumPreview(
+    updatedStudent.studentId
+  );
+
+    // console.log(
+    //   "Updated Student: ====++>>>",
+    //   updatedStudent
+    // );
+
+    // console.log(
+    //   "Lump Sum Preview: ====++>>>",
+    //   lumpSumPreview
+    // );
+
   // ===================================================
   // Public Payment Response
   // ===================================================
@@ -1927,6 +1943,8 @@ const searchStudent = async (
         updatedStudent.dueFee ||
         0
       ),
+
+      lumpSumPreview,
 
     status:
       updatedStudent.status,
