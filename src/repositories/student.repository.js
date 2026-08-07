@@ -465,24 +465,16 @@ const deleteStudent = async (
 // Search Student
 // =====================================================
 
-const searchStudent = async (
-  search
-) => {
-  const value =
-    search.trim();
+const searchStudent = async (search) => {
+  const value = search.trim();
 
-  return await Student.findOne({
+  return await Student.find({
     isDeleted: false,
-
     status: "ACTIVE",
 
     $or: [
-      {
-        studentId: value,
-      },
-      {
-        mobile: value,
-      },
+      { studentId: value },
+      { mobile: value },
     ],
   });
 };

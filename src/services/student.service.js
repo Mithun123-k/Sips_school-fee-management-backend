@@ -1835,8 +1835,7 @@ const searchStudent = async (
 ) => {
   if (
     !search ||
-    typeof search !==
-    "string" ||
+    typeof search !== "string" ||
     !search.trim()
   ) {
     throw new Error(
@@ -1847,108 +1846,114 @@ const searchStudent = async (
   const cleanSearch =
     search.trim();
 
-  const student =
+  const students =
     await studentRepository.searchStudent(
       cleanSearch
     );
 
-  if (!student) {
+  // ===================================================
+  // Student Not Found
+  // ===================================================
+
+  if (
+    !students ||
+    students.length === 0
+  ) {
     throw new Error(
       "Student not found"
     );
   }
 
-  if (
-    student.status !==
-    "ACTIVE"
-  ) {
-    throw new Error(
-      "Student account is inactive"
-    );
-  }
-
   // ===================================================
-  // Refresh Due
+  // Refresh Due + Lump Sum Preview
   // ===================================================
 
-  const updatedStudent =
-    await refreshStudentDueFee(
-      student
-    );
+  const result = [];
+
+  for (const student of students) {
+
+    // ===============================================
+    // Refresh Due
+    // ===============================================
+
+    const updatedStudent =
+      await refreshStudentDueFee(
+        student
+      );
+
+    // ===============================================
+    // Lump Sum Preview
+    // ===============================================
 
     const lumpSumPreview =
-  await getLumpSumPreview(
-    updatedStudent.studentId
-  );
+      await getLumpSumPreview(
+        updatedStudent.studentId
+      );
 
-    // console.log(
-    //   "Updated Student: ====++>>>",
-    //   updatedStudent
-    // );
+    // ===============================================
+    // Response
+    // ===============================================
 
-    // console.log(
-    //   "Lump Sum Preview: ====++>>>",
-    //   lumpSumPreview
-    // );
+    result.push({
+      studentId:
+        updatedStudent.studentId,
 
-  // ===================================================
-  // Public Payment Response
-  // ===================================================
+      name:
+        updatedStudent.name,
 
-  return {
-    studentId:
-      updatedStudent.studentId,
+      fatherName:
+        updatedStudent.fatherName,
 
-    name:
-      updatedStudent.name,
+      motherName:
+        updatedStudent.motherName,
 
-    fatherName:
-      updatedStudent.fatherName,
-    motherName:
-      updatedStudent.motherName,
+      admissionNo:
+        updatedStudent.admissionNo,
 
-    admissionNo:
-      updatedStudent.admissionNo,
+      mobile:
+        updatedStudent.mobile,
 
-    mobile:
-      updatedStudent.mobile,
+      email:
+        updatedStudent.email,
 
-    email:
-      updatedStudent.email,
+      gender:
+        updatedStudent.gender,
 
-    gender:
-      updatedStudent.gender,
+      dob:
+        updatedStudent.dob,
 
-    dob:
-      updatedStudent.dob,
+      className:
+        updatedStudent.className,
 
-    className:
-      updatedStudent.className,
+      section:
+        updatedStudent.section,
 
-    section:
-      updatedStudent.section,
+      monthlyFee:
+        Number(
+          updatedStudent.monthlyFee || 0
+        ),
 
-    monthlyFee:
-      Number(
-        updatedStudent.monthlyFee ||
-        0
-      ),
+      feeDiscountType:
+        updatedStudent.feeDiscountType ||
+        "NONE",
 
-    feeDiscountType:
-      updatedStudent.feeDiscountType ||
-      "NONE",
-
-    dueFee:
-      Number(
-        updatedStudent.dueFee ||
-        0
-      ),
+      dueFee:
+        Number(
+          updatedStudent.dueFee || 0
+        ),
 
       lumpSumPreview,
 
-    status:
-      updatedStudent.status,
-  };
+      status:
+        updatedStudent.status,
+    });
+  }
+
+  // ===================================================
+  // Return
+  // ===================================================
+
+  return result;
 };
 
 // =====================================================
