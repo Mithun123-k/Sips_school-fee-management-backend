@@ -22,6 +22,14 @@ const {
 } =
   require("../validators/fee.validator");
 
+
+
+
+  router.post(
+  "/calculate",
+  feeController.calculateFee
+);
+
 // =====================================================
 // Collect CASH Fee
 // ADMIN / RECEPTIONIST

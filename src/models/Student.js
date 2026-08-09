@@ -356,6 +356,21 @@ const studentSchema = new mongoose.Schema(
       min: 0,
     },
 
+    lateFeeWaived: {
+      type: Boolean,
+      default: false
+    },
+
+    lateFeeWaiverAmount: {
+      type: Number,
+      default: 0
+    },
+
+    lateFeeWaiverReason: {
+      type: String,
+      default: ""
+    },
+
     // =====================================================
     // Student Status
     // =====================================================

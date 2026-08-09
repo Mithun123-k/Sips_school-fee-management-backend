@@ -13,6 +13,7 @@ const ALLOWED_FEE_HEADS = [
   "FUNCTION",
   "SMART_CLASS",
   "OTHER",
+  "All",
 ];
 
 // =====================================================

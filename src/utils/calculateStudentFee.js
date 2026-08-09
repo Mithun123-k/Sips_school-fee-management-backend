@@ -2,9 +2,7 @@
 // Calculate Fee Start Date
 // =====================================
 
-const calculateFeeStartDate = (
-  admissionDate
-) => {
+const calculateFeeStartDate = (admissionDate) => {
   const date = new Date(admissionDate);
 
   // =====================================
@@ -12,9 +10,7 @@ const calculateFeeStartDate = (
   // =====================================
 
   if (Number.isNaN(date.getTime())) {
-    throw new Error(
-      "Invalid admission date"
-    );
+    throw new Error("Invalid admission date");
   }
 
   // =====================================
@@ -24,9 +20,7 @@ const calculateFeeStartDate = (
   // 1 minute = 1 month
   // =====================================
 
-  if (
-    process.env.TEST_FEE_MODE === "true"
-  ) {
+  if (process.env.TEST_FEE_MODE === "true") {
     return new Date();
   }
 
@@ -93,12 +87,12 @@ const validateFeeDiscountType = (
 //     -> Student pays 80%
 //
 // RTE
-//     -> All Fees 100% discount
 //     -> Monthly Fee = 0
+//     -> Late Fee = 0
 //
 // GIRL
-//     -> Only Admission Fee 50% discount
-//     -> Monthly Fee remains unchanged
+//     -> Monthly Fee unchanged
+//     -> Late Fee applicable
 //
 // =====================================
 
@@ -109,10 +103,6 @@ const getDiscountedMonthlyFee = (
   const amount =
     Number(monthlyFee || 0);
 
-  // =====================================
-  // Validate Monthly Fee
-  // =====================================
-
   if (
     !Number.isFinite(amount) ||
     amount < 0
@@ -122,23 +112,15 @@ const getDiscountedMonthlyFee = (
     );
   }
 
-  // =====================================
-  // Validate Discount Type
-  // =====================================
-
   const discountType =
     validateFeeDiscountType(
       feeDiscountType
     );
 
-  // =====================================
-  // Apply Discount
-  // =====================================
-
   switch (discountType) {
     // ===================================
     // SIBLING
-    // 20% Monthly Discount
+    // 20% Discount
     // ===================================
 
     case "SIBLING":
@@ -154,11 +136,7 @@ const getDiscountedMonthlyFee = (
 
     // ===================================
     // GIRL
-    //
-    // Girl discount is ONLY on
-    // Admission Fee.
-    //
-    // Monthly fee remains 100%.
+    // Monthly fee unchanged
     // ===================================
 
     case "GIRL":
@@ -177,25 +155,6 @@ const getDiscountedMonthlyFee = (
 // =====================================
 // Calculate Monthly Fee
 // =====================================
-//
-// This function calculates accumulated
-// monthly fee from feeStartDate.
-//
-// Discount is applied BEFORE multiplying
-// by number of months.
-//
-// Example:
-//
-// Monthly Fee = ₹1500
-// SIBLING = 20%
-//
-// Effective Monthly Fee = ₹1200
-//
-// 3 Months:
-//
-// ₹1200 × 3 = ₹3600
-//
-// =====================================
 
 const calculateMonthlyFee = (
   feeStartDate,
@@ -203,10 +162,6 @@ const calculateMonthlyFee = (
   currentDate = new Date(),
   feeDiscountType = "NONE"
 ) => {
-  // =====================================
-  // No Fee
-  // =====================================
-
   if (
     !feeStartDate ||
     monthlyFee === undefined ||
@@ -214,10 +169,6 @@ const calculateMonthlyFee = (
   ) {
     return 0;
   }
-
-  // =====================================
-  // Dates
-  // =====================================
 
   const startDate =
     new Date(feeStartDate);
@@ -259,7 +210,7 @@ const calculateMonthlyFee = (
   }
 
   // =====================================
-  // Validate Discount Type
+  // Validate Discount
   // =====================================
 
   const finalDiscountType =
@@ -268,7 +219,7 @@ const calculateMonthlyFee = (
     );
 
   // =====================================
-  // Calculate Effective Monthly Fee
+  // Effective Monthly Fee
   // =====================================
 
   const discountedMonthlyFee =
@@ -290,10 +241,7 @@ const calculateMonthlyFee = (
       today.getTime() -
       startDate.getTime();
 
-    // ===================================
     // Fee has not started
-    // ===================================
-
     if (diffMs < 0) {
       return 0;
     }
@@ -304,12 +252,7 @@ const calculateMonthlyFee = (
           (60 * 1000)
       );
 
-    // ===================================
-    // Create = 1st month
-    // After 1 minute = 2nd month
-    // After 2 minutes = 3rd month
-    // ===================================
-
+    // First month starts immediately
     const months =
       minutesPassed + 1;
 
@@ -338,7 +281,7 @@ const calculateMonthlyFee = (
   );
 
   // =====================================
-  // Fee has not started yet
+  // Fee has not started
   // =====================================
 
   if (today < startDate) {
@@ -346,7 +289,7 @@ const calculateMonthlyFee = (
   }
 
   // =====================================
-  // Calculate Months
+  // Calculate Number of Months
   // =====================================
 
   const months =
@@ -372,13 +315,687 @@ const calculateMonthlyFee = (
 };
 
 // =====================================
-// Calculate Total Due
+// Get Month End Date
+// =====================================
+
+const getMonthEndDate = (
+  year,
+  month
+) => {
+  return new Date(
+    year,
+    month + 1,
+    0
+  );
+};
+
+// =====================================
+// Calculate Late Fee For One Month
+// =====================================
+//
+// Rules:
+//
+// NONE:
+//   Late fee applicable
+//
+// SIBLING:
+//   Late fee applicable
+//
+// GIRL:
+//   Late fee applicable
+//
+// RTE:
+//   Late fee = ₹0
+//
+// -------------------------------------
+//
+// Normal Late Fee Rules:
+//
+// Before 20th:
+//   ₹0
+//
+// 20th to before month-end:
+//   ₹20
+//
+// Month-end onwards:
+//   ₹50
+//
+// Maximum:
+//   ₹50 per overdue month
+//
+// =====================================
+
+const calculateLateFeeForMonth = (
+  feeMonthDate,
+  currentDate = new Date(),
+  feeDiscountType = "NONE"
+) => {
+  // =====================================
+  // Validate Discount Type
+  // =====================================
+
+  const finalDiscountType =
+    validateFeeDiscountType(
+      feeDiscountType
+    );
+
+  // =====================================
+  // RTE
+  //
+  // RTE has zero fees.
+  // Therefore no late fee.
+  // =====================================
+
+  if (
+    finalDiscountType === "RTE"
+  ) {
+    return 0;
+  }
+
+  const monthDate =
+    new Date(feeMonthDate);
+
+  const today =
+    new Date(currentDate);
+
+  // =====================================
+  // Validate Dates
+  // =====================================
+
+  if (
+    Number.isNaN(
+      monthDate.getTime()
+    ) ||
+    Number.isNaN(
+      today.getTime()
+    )
+  ) {
+    return 0;
+  }
+
+  monthDate.setHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  today.setHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  const year =
+    monthDate.getFullYear();
+
+  const month =
+    monthDate.getMonth();
+
+  // =====================================
+  // 20th Date
+  // =====================================
+
+  const twentiethDate =
+    new Date(
+      year,
+      month,
+      20
+    );
+
+  twentiethDate.setHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  // =====================================
+  // Month End
+  // =====================================
+
+  const monthEndDate =
+    getMonthEndDate(
+      year,
+      month
+    );
+
+  monthEndDate.setHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  // =====================================
+  // Before 20th
+  // No Late Fee
+  // =====================================
+
+  if (
+    today < twentiethDate
+  ) {
+    return 0;
+  }
+
+  // =====================================
+  // 20th to before month-end
+  // ₹20
+  // =====================================
+
+  if (
+    today < monthEndDate
+  ) {
+    return 20;
+  }
+
+  // =====================================
+  // Month-end onwards
+  // ₹50
+  // =====================================
+
+  return 50;
+};
+
+// =====================================
+// Calculate Total Late Fee
+// =====================================
+//
+// paidFeeMonths format:
+//
+// [
+//   "2026-08",
+//   "2026-09"
+// ]
+//
+// Paid months are excluded.
+//
+// RTE:
+//   Late fee = ₹0
+//
+// =====================================
+
+const calculateLateFee = (
+  feeStartDate,
+  currentDate = new Date(),
+  paidFeeMonths = [],
+  feeDiscountType = "NONE"
+) => {
+  // =====================================
+  // Validate Discount
+  // =====================================
+
+  const finalDiscountType =
+    validateFeeDiscountType(
+      feeDiscountType
+    );
+
+  // =====================================
+  // RTE
+  //
+// No late fee for RTE.
+// =====================================
+
+  if (
+    finalDiscountType === "RTE"
+  ) {
+    return 0;
+  }
+
+  if (!feeStartDate) {
+    return 0;
+  }
+
+  const startDate =
+    new Date(feeStartDate);
+
+  const today =
+    new Date(currentDate);
+
+  // =====================================
+  // Validate Dates
+  // =====================================
+
+  if (
+    Number.isNaN(
+      startDate.getTime()
+    ) ||
+    Number.isNaN(
+      today.getTime()
+    )
+  ) {
+    return 0;
+  }
+
+  startDate.setHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  today.setHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  // =====================================
+  // Fee has not started
+  // =====================================
+
+  if (
+    today < startDate
+  ) {
+    return 0;
+  }
+
+  // =====================================
+  // Normalize Paid Months
+  // =====================================
+
+  const paidMonths =
+    new Set(
+      Array.isArray(
+        paidFeeMonths
+      )
+        ? paidFeeMonths
+        : []
+    );
+
+  let totalLateFee = 0;
+
+  // =====================================
+  // Start from Fee Start Month
+  // =====================================
+
+  let currentMonth =
+    new Date(
+      startDate.getFullYear(),
+      startDate.getMonth(),
+      1
+    );
+
+  // =====================================
+  // Check Every Month
+  // =====================================
+
+  while (
+    currentMonth <= today
+  ) {
+    const year =
+      currentMonth.getFullYear();
+
+    const month =
+      currentMonth.getMonth();
+
+    const monthKey =
+      `${year}-${String(
+        month + 1
+      ).padStart(2, "0")}`;
+
+    // ===================================
+    // Skip Paid Month
+    // ===================================
+
+    if (
+      !paidMonths.has(
+        monthKey
+      )
+    ) {
+      totalLateFee +=
+        calculateLateFeeForMonth(
+          currentMonth,
+          today,
+          finalDiscountType
+        );
+    }
+
+    // ===================================
+    // Next Month
+    // ===================================
+
+    currentMonth =
+      new Date(
+        year,
+        month + 1,
+        1
+      );
+  }
+
+  return totalLateFee;
+};
+
+// =====================================
+// Calculate Month-wise Late Fee
+// =====================================
+//
+// Returns:
+//
+// [
+//   {
+//     month: "2026-08",
+//     lateFee: 50,
+//     paid: false
+//   }
+// ]
+//
+// RTE:
+//
+// [
+//   {
+//     month: "2026-08",
+//     lateFee: 0,
+//     paid: false
+//   }
+// ]
+//
+// =====================================
+
+const calculateMonthWiseLateFee = (
+  feeStartDate,
+  currentDate = new Date(),
+  paidFeeMonths = [],
+  feeDiscountType = "NONE"
+) => {
+  // =====================================
+  // Validate Discount
+  // =====================================
+
+  const finalDiscountType =
+    validateFeeDiscountType(
+      feeDiscountType
+    );
+
+  if (!feeStartDate) {
+    return [];
+  }
+
+  const startDate =
+    new Date(feeStartDate);
+
+  const today =
+    new Date(currentDate);
+
+  // =====================================
+  // Validate Dates
+  // =====================================
+
+  if (
+    Number.isNaN(
+      startDate.getTime()
+    ) ||
+    Number.isNaN(
+      today.getTime()
+    )
+  ) {
+    return [];
+  }
+
+  startDate.setHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  today.setHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  // =====================================
+  // Fee not started
+  // =====================================
+
+  if (
+    today < startDate
+  ) {
+    return [];
+  }
+
+  // =====================================
+  // Normalize Paid Months
+  // =====================================
+
+  const paidMonths =
+    new Set(
+      Array.isArray(
+        paidFeeMonths
+      )
+        ? paidFeeMonths
+        : []
+    );
+
+  const result = [];
+
+  let currentMonth =
+    new Date(
+      startDate.getFullYear(),
+      startDate.getMonth(),
+      1
+    );
+
+  // =====================================
+  // Loop Through Months
+  // =====================================
+
+  while (
+    currentMonth <= today
+  ) {
+    const year =
+      currentMonth.getFullYear();
+
+    const month =
+      currentMonth.getMonth();
+
+    const monthKey =
+      `${year}-${String(
+        month + 1
+      ).padStart(2, "0")}`;
+
+    const isPaid =
+      paidMonths.has(
+        monthKey
+      );
+
+    const lateFee =
+      isPaid
+        ? 0
+        : calculateLateFeeForMonth(
+            currentMonth,
+            today,
+            finalDiscountType
+          );
+
+    result.push({
+      month: monthKey,
+      lateFee,
+      paid: isPaid,
+    });
+
+    // ===================================
+    // Next Month
+    // ===================================
+
+    currentMonth =
+      new Date(
+        year,
+        month + 1,
+        1
+      );
+  }
+
+  return result;
+};
+
+// =====================================
+// Calculate Late Fee Waiver
+// =====================================
+//
+// waiverType:
+//
+// NONE
+// AMOUNT
+// PERCENTAGE
+// FULL
+//
+// =====================================
+
+const calculateLateFeeWaiver = (
+  lateFee,
+  waiverType = "NONE",
+  waiverValue = 0
+) => {
+  const finalLateFee =
+    Number(
+      lateFee || 0
+    );
+
+  // =====================================
+  // Validate Late Fee
+  // =====================================
+
+  if (
+    !Number.isFinite(
+      finalLateFee
+    ) ||
+    finalLateFee < 0
+  ) {
+    throw new Error(
+      "Late fee must be a valid non-negative number"
+    );
+  }
+
+  const finalWaiverType =
+    waiverType || "NONE";
+
+  let waivedAmount = 0;
+
+  switch (
+    finalWaiverType
+  ) {
+    // ===================================
+    // FULL WAIVER
+    // ===================================
+
+    case "FULL":
+      waivedAmount =
+        finalLateFee;
+      break;
+
+    // ===================================
+    // FIXED AMOUNT WAIVER
+    // ===================================
+
+    case "AMOUNT": {
+      const amount =
+        Number(
+          waiverValue || 0
+        );
+
+      if (
+        !Number.isFinite(
+          amount
+        ) ||
+        amount < 0
+      ) {
+        throw new Error(
+          "Waiver amount must be a valid non-negative number"
+        );
+      }
+
+      waivedAmount =
+        Math.min(
+          amount,
+          finalLateFee
+        );
+
+      break;
+    }
+
+    // ===================================
+    // PERCENTAGE WAIVER
+    // ===================================
+
+    case "PERCENTAGE": {
+      const percentage =
+        Number(
+          waiverValue || 0
+        );
+
+      if (
+        !Number.isFinite(
+          percentage
+        ) ||
+        percentage < 0 ||
+        percentage > 100
+      ) {
+        throw new Error(
+          "Waiver percentage must be between 0 and 100"
+        );
+      }
+
+      waivedAmount =
+        finalLateFee *
+        (
+          percentage / 100
+        );
+
+      break;
+    }
+
+    // ===================================
+    // NO WAIVER
+    // ===================================
+
+    case "NONE":
+    default:
+      waivedAmount = 0;
+      break;
+  }
+
+  // =====================================
+  // Payable Late Fee
+  // =====================================
+
+  const payableLateFee =
+    Math.max(
+      finalLateFee -
+        waivedAmount,
+      0
+    );
+
+  return {
+    lateFee:
+      finalLateFee,
+
+    waivedAmount,
+
+    payableLateFee,
+  };
+};
+
+// =====================================
+// Calculate Due Fee
 // =====================================
 //
 // Formula:
 //
 // Opening Due
-// + Discounted Monthly Fee
+// + Monthly Fee
+// + Payable Late Fee
+// - Paid Fee
+//
+// RTE:
+//
+// Opening Due
+// + Monthly Fee (0)
+// + Late Fee (0)
 // - Paid Fee
 //
 // =====================================
@@ -389,8 +1006,20 @@ const calculateDueFee = (
   openingDue = 0,
   paidFee = 0,
   currentDate = new Date(),
-  feeDiscountType = "NONE"
+  feeDiscountType = "NONE",
+  paidFeeMonths = [],
+  lateFeeWaiverType = "NONE",
+  lateFeeWaiverValue = 0
 ) => {
+  // =====================================
+  // Validate Discount
+  // =====================================
+
+  const finalDiscountType =
+    validateFeeDiscountType(
+      feeDiscountType
+    );
+
   // =====================================
   // Monthly Fee
   // =====================================
@@ -398,12 +1027,34 @@ const calculateDueFee = (
   const monthlyAmount =
     calculateMonthlyFee(
       feeStartDate,
-
       monthlyFee,
-
       currentDate,
+      finalDiscountType
+    );
 
-      feeDiscountType
+  // =====================================
+  // Late Fee
+  //
+  // RTE automatically returns 0.
+  // =====================================
+
+  const lateFee =
+    calculateLateFee(
+      feeStartDate,
+      currentDate,
+      paidFeeMonths,
+      finalDiscountType
+    );
+
+  // =====================================
+  // Late Fee Waiver
+  // =====================================
+
+  const lateFeeWaiver =
+    calculateLateFeeWaiver(
+      lateFee,
+      lateFeeWaiverType,
+      lateFeeWaiverValue
     );
 
   // =====================================
@@ -411,14 +1062,18 @@ const calculateDueFee = (
   // =====================================
 
   const finalOpeningDue =
-    Number(openingDue || 0);
+    Number(
+      openingDue || 0
+    );
 
   // =====================================
   // Paid Fee
   // =====================================
 
   const finalPaidFee =
-    Number(paidFee || 0);
+    Number(
+      paidFee || 0
+    );
 
   // =====================================
   // Validate Opening Due
@@ -456,28 +1111,50 @@ const calculateDueFee = (
 
   const totalDue =
     finalOpeningDue +
-    monthlyAmount -
+    monthlyAmount +
+    lateFeeWaiver.payableLateFee -
     finalPaidFee;
 
   // =====================================
   // Never Return Negative Due
   // =====================================
 
-  return Math.max(
-    totalDue,
-    0
-  );
+  const finalDue =
+    Math.max(
+      totalDue,
+      0
+    );
+
+  // =====================================
+  // Return Detailed Result
+  // =====================================
+
+  return {
+    openingDue:
+      finalOpeningDue,
+
+    monthlyFee:
+      monthlyAmount,
+
+    lateFee:
+      lateFeeWaiver.lateFee,
+
+    lateFeeWaived:
+      lateFeeWaiver.waivedAmount,
+
+    payableLateFee:
+      lateFeeWaiver.payableLateFee,
+
+    paidFee:
+      finalPaidFee,
+
+    totalDue:
+      finalDue,
+  };
 };
 
 // =====================================
 // Get Monthly Discount Percentage
-// =====================================
-//
-// SIBLING = 20%
-// RTE     = 100%
-// GIRL    = 0% monthly
-// NONE    = 0%
-//
 // =====================================
 
 const getMonthlyDiscountPercentage = (
@@ -488,7 +1165,9 @@ const getMonthlyDiscountPercentage = (
       feeDiscountType
     );
 
-  switch (finalDiscountType) {
+  switch (
+    finalDiscountType
+  ) {
     case "SIBLING":
       return 20;
 
@@ -507,20 +1186,6 @@ const getMonthlyDiscountPercentage = (
 // =====================================
 // Get Admission Fee Discount
 // =====================================
-//
-// NONE
-//     -> 0%
-//
-// SIBLING
-//     -> 0%
-//
-// RTE
-//     -> 100%
-//
-// GIRL
-//     -> 50%
-//
-// =====================================
 
 const getAdmissionDiscountPercentage = (
   feeDiscountType = "NONE"
@@ -530,7 +1195,9 @@ const getAdmissionDiscountPercentage = (
       feeDiscountType
     );
 
-  switch (finalDiscountType) {
+  switch (
+    finalDiscountType
+  ) {
     case "RTE":
       return 100;
 
@@ -553,10 +1220,18 @@ const getDiscountedAdmissionFee = (
   feeDiscountType = "NONE"
 ) => {
   const amount =
-    Number(admissionFee || 0);
+    Number(
+      admissionFee || 0
+    );
+
+  // =====================================
+  // Validate Admission Fee
+  // =====================================
 
   if (
-    !Number.isFinite(amount) ||
+    !Number.isFinite(
+      amount
+    ) ||
     amount < 0
   ) {
     throw new Error(
@@ -581,21 +1256,6 @@ const getDiscountedAdmissionFee = (
 // =====================================
 // Get Discounted Fee Heads
 // =====================================
-//
-// This helper provides the final
-// effective fee-head values.
-//
-// Useful for:
-// - Student creation
-// - Fee summary
-// - Receipt
-// - Reports
-// - Class-wise fee update
-//
-// Original fee values should still be
-// stored in Student.
-//
-// =====================================
 
 const getDiscountedFeeHeads = (
   {
@@ -615,11 +1275,19 @@ const getDiscountedFeeHeads = (
       feeDiscountType
     );
 
+  // =====================================
+  // Admission
+  // =====================================
+
   const finalAdmissionFee =
     getDiscountedAdmissionFee(
       admissionFee,
       finalDiscountType
     );
+
+  // =====================================
+  // Monthly
+  // =====================================
 
   const finalMonthlyFee =
     getDiscountedMonthlyFee(
@@ -627,28 +1295,44 @@ const getDiscountedFeeHeads = (
       finalDiscountType
     );
 
+  // =====================================
+  // Other Fee Heads
+  // =====================================
+
   const finalExamFee =
-    Number(examFee || 0);
+    Number(
+      examFee || 0
+    );
 
   const finalSportFee =
-    Number(sportFee || 0);
+    Number(
+      sportFee || 0
+    );
 
   const finalComputerFee =
-    Number(computerFee || 0);
+    Number(
+      computerFee || 0
+    );
 
   const finalFunctionFee =
-    Number(functionFee || 0);
+    Number(
+      functionFee || 0
+    );
 
   const finalSmartClassFee =
-    Number(smartClassFee || 0);
+    Number(
+      smartClassFee || 0
+    );
 
   const finalOtherCharges =
-    Number(otherCharges || 0);
+    Number(
+      otherCharges || 0
+    );
 
   // =====================================
   // RTE
   //
-  // All fees are 100% discounted.
+  // All Fees 100% Discounted
   // =====================================
 
   if (
@@ -656,19 +1340,12 @@ const getDiscountedFeeHeads = (
   ) {
     return {
       admissionFee: 0,
-
       monthlyFee: 0,
-
       examFee: 0,
-
       sportFee: 0,
-
       computerFee: 0,
-
       functionFee: 0,
-
       smartClassFee: 0,
-
       otherCharges: 0,
     };
   }
@@ -708,19 +1385,19 @@ const getDiscountedFeeHeads = (
 // Calculate One-Time Fee Total
 // =====================================
 //
-// This calculates:
-// Admission
-// + Exam
-// + Sport
-// + Computer
-// + Function
-// + Smart Class
-// + Other Charges
+// Includes:
 //
-// NOTE:
-// Monthly fee is NOT included here
-// because monthly fee is calculated
-// separately based on months.
+// Admission
+// Exam
+// Sport
+// Computer
+// Function
+// Smart Class
+// Other Charges
+//
+// Monthly fee is NOT included.
+//
+// Late fee is NOT included.
 //
 // =====================================
 
@@ -750,11 +1427,27 @@ const calculateOneTimeFeeTotal = (
 // =====================================
 
 module.exports = {
+  // ===================================
+  // Fee Start
+  // ===================================
+
   calculateFeeStartDate,
+
+  // ===================================
+  // Monthly Fee
+  // ===================================
 
   calculateMonthlyFee,
 
+  // ===================================
+  // Due Fee
+  // ===================================
+
   calculateDueFee,
+
+  // ===================================
+  // Discount
+  // ===================================
 
   getDiscountedMonthlyFee,
 
@@ -769,4 +1462,20 @@ module.exports = {
   calculateOneTimeFeeTotal,
 
   validateFeeDiscountType,
+
+  // ===================================
+  // Late Fee
+  // ===================================
+
+  calculateLateFeeForMonth,
+
+  calculateLateFee,
+
+  calculateMonthWiseLateFee,
+
+  // ===================================
+  // Late Fee Waiver
+  // ===================================
+
+  calculateLateFeeWaiver,
 };

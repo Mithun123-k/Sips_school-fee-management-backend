@@ -435,70 +435,111 @@ const getEffectiveMonthlyFee = (
 const getEffectiveOneTimeFees = (
   student
 ) => {
-  const feeHeads = {
-    admissionFee:
-      normalizeFeeValue(
-        student.admissionFee,
-        "Admission fee"
-      ),
-
-    monthlyFee:
-      normalizeFeeValue(
-        student.monthlyFee,
-        "Monthly fee"
-      ),
-
-    examFee:
-      normalizeFeeValue(
-        student.examFee,
-        "Exam fee"
-      ),
-
-    sportFee:
-      normalizeFeeValue(
-        student.sportFee,
-        "Sport fee"
-      ),
-
-    computerFee:
-      normalizeFeeValue(
-        student.computerFee,
-        "Computer fee"
-      ),
-
-    functionFee:
-      normalizeFeeValue(
-        student.functionFee,
-        "Function fee"
-      ),
-
-    smartClassFee:
-      normalizeFeeValue(
-        student.smartClassFee,
-        "Smart class fee"
-      ),
-
-    otherCharges:
-      normalizeFeeValue(
-        student.otherCharges,
-        "Other charges"
-      ),
-  };
-
-  const discounted =
-    calculateDiscountedFeeHeads(
-      feeHeads,
+  const discountType =
+    validateFeeDiscountType(
       student.feeDiscountType
     );
 
-  return (
-    discounted.admissionFee +
-    discounted.examFee +
-    discounted.sportFee +
-    discounted.computerFee +
-    discounted.functionFee +
-    discounted.smartClassFee +
-    discounted.otherCharges
+  const admissionFee =
+    normalizeFeeValue(
+      student.admissionFee,
+      "Admission fee"
+    );
+
+  const examFee =
+    normalizeFeeValue(
+      student.examFee,
+      "Exam fee"
+    );
+
+  const sportFee =
+    normalizeFeeValue(
+      student.sportFee,
+      "Sport fee"
+    );
+
+  const computerFee =
+    normalizeFeeValue(
+      student.computerFee,
+      "Computer fee"
+    );
+
+  const functionFee =
+    normalizeFeeValue(
+      student.functionFee,
+      "Function fee"
+    );
+
+  const smartClassFee =
+    normalizeFeeValue(
+      student.smartClassFee,
+      "Smart class fee"
+    );
+
+  const otherCharges =
+    normalizeFeeValue(
+      student.otherCharges,
+      "Other charges"
+    );
+
+  // ===================================================
+  // RTE
+  // ===================================================
+  //
+  // RTE = 100% discount on all applicable fees
+  //
+
+  if (discountType === "RTE") {
+    return 0;
+  }
+
+  // ===================================================
+  // GIRL
+  // ===================================================
+  //
+  // GIRL = 50% discount ONLY on Admission Fee
+  //
+  // Example:
+  //
+  // Admission = ₹110
+  // Discount  = ₹55
+  // Effective = ₹55
+  //
+  // Other fees remain unchanged.
+  //
+
+  let effectiveAdmissionFee =
+    admissionFee;
+
+  if (
+    discountType === "GIRL"
+  ) {
+    effectiveAdmissionFee =
+      admissionFee * 0.5;
+  }
+
+  // ===================================================
+  // SIBLING
+  // ===================================================
+  //
+  // SIBLING discount applies ONLY to Monthly Fee.
+  //
+  // Monthly fee is handled separately by
+  // getEffectiveMonthlyFee().
+  //
+  // Therefore one-time fees remain unchanged.
+  //
+
+  return Number(
+    (
+      effectiveAdmissionFee +
+      examFee +
+      sportFee +
+      computerFee +
+      functionFee +
+      smartClassFee +
+      otherCharges
+    ).toFixed(2)
   );
 };
 

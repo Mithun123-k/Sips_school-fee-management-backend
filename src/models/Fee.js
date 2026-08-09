@@ -137,6 +137,37 @@ const feeSchema = new mongoose.Schema(
     },
 
     // =================================================
+    // Fee Breakdown
+    // =================================================
+    //
+    // This is the breakdown of the amount paid by
+    // the student for each fee head.
+    //
+    // Example:
+    //
+    // Monthly Fee = ₹1500
+    // Exam Fee = ₹500
+    // Total Paid = ₹2000
+    //
+    // feeBreakdown: {
+    //   MONTHLY: 1500,
+    //   EXAM: 500,
+    // }
+    //
+    // =================================================
+
+    feeBreakdown: {
+      MONTHLY: { type: Number, default: 0 },
+      ADMISSION: { type: Number, default: 0 },
+      EXAM: { type: Number, default: 0 },
+      SPORT: { type: Number, default: 0 },
+      COMPUTER: { type: Number, default: 0 },
+      FUNCTION: { type: Number, default: 0 },
+      SMART_CLASS: { type: Number, default: 0 },
+      OTHER: { type: Number, default: 0 },
+    },
+
+    // =================================================
     // Payment Type
     // =================================================
     //

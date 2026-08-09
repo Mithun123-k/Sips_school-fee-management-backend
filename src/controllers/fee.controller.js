@@ -7,6 +7,10 @@ const sendResponse =
 const feeService =
   require("../services/fee.service");
 
+
+
+
+
 // =====================================================
 // Collect CASH Fee
 // ADMIN / RECEPTIONIST
@@ -205,3 +209,92 @@ exports.getReceipt =
     );
   }
 );
+
+// =====================================================
+// Calculate Student Fee
+// =====================================================
+//
+// POST /api/fees/calculate
+//
+// Body:
+//
+// {
+//   "studentId": "SIPS000001",
+//   "feeHead": "ADMISSION"
+// }
+//
+// OR:
+//
+// {
+//   "studentId": "SIPS000001",
+//   "feeHead": [
+//     "ADMISSION",
+//     "MONTHLY"
+//   ]
+// }
+//
+// OR:
+//
+// {
+//   "studentId": "SIPS000001",
+//   "feeHead": "ALL"
+// }
+//
+// =====================================================
+
+exports.calculateFee =
+  asyncHandler(
+    async (req, res) => {
+      const {
+        studentId,
+        feeHead,
+      } = req.body || {};
+
+      if (!studentId) {
+        return sendResponse(
+          res,
+          400,
+          false,
+          "studentId is required",
+          null
+        );
+      }
+
+      if (
+        feeHead === undefined ||
+        feeHead === null ||
+        (
+          typeof feeHead === "string" &&
+          feeHead.trim() === ""
+        ) ||
+        (
+          Array.isArray(feeHead) &&
+          feeHead.length === 0
+        )
+      ) {
+        return sendResponse(
+          res,
+          400,
+          false,
+          "feeHead is required",
+          null
+        );
+      }
+
+      const result =
+        await feeService.calculateFeeByHead(
+          {
+            studentId,
+            feeHead,
+          }
+        );
+
+      return sendResponse(
+        res,
+        200,
+        true,
+        "Fee calculated successfully",
+        result
+      );
+    }
+  );
