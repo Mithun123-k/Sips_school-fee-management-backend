@@ -298,3 +298,43 @@ exports.calculateFee =
       );
     }
   );
+
+
+  exports.waiveLateFee = asyncHandler(
+  async (req, res) => {
+    const result =
+      await feeService.waiveLateFee(
+        req.body,
+        req.user.id
+      );
+
+    return sendResponse(
+      res,
+      200,
+      true,
+      "Late fee waived successfully",
+      result
+    );
+  }
+);
+
+exports.revokeLateFeeWaiver =
+  asyncHandler(
+    async (req, res) => {
+      const result =
+        await feeService
+          .revokeLateFeeWaiver(
+            req.params.studentId,
+            req.params.month,
+            req.user.id
+          );
+
+      return sendResponse(
+        res,
+        200,
+        true,
+        "Late fee waiver revoked successfully",
+        result
+      );
+    }
+  );

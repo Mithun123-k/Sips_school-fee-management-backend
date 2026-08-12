@@ -30,6 +30,28 @@ const {
   feeController.calculateFee
 );
 
+
+router.post(
+  "/late-fee/waive",
+
+  auth,
+
+  authorize("ADMIN"),
+
+  feeController.waiveLateFee
+);
+
+router.delete(
+  "/late-fee/waiver/:studentId/:month",
+
+  auth,
+
+  authorize("ADMIN"),
+
+  feeController.revokeLateFeeWaiver
+);
+
+
 // =====================================================
 // Collect CASH Fee
 // ADMIN / RECEPTIONIST
@@ -40,6 +62,7 @@ const {
 // Authentication required.
 //
 // =====================================================
+
 
 router.post(
   "/collect",

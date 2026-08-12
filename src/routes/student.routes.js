@@ -17,6 +17,7 @@ const validate =
 const {
   createStudentValidation,
   updateStudentValidation,
+  promoteStudentValidation,
 } = require("../validators/student.validator");
 
 // =====================================================
@@ -55,6 +56,21 @@ router.post(
 );
 
 // =====================================================
+// PROMOTE STUDENT
+// ADMIN ONLY
+// New class fee becomes effective from next fee period.
+// =====================================================
+
+router.post(
+  "/promote",
+  auth,
+  authorize("ADMIN"),
+  promoteStudentValidation,
+  validate,
+  studentController.promoteStudent
+);
+
+// =====================================================
 // GET ALL STUDENTS
 // ADMIN / RECEPTIONIST
 // =====================================================
@@ -76,11 +92,11 @@ router.get(
 
 router.get(
   "/:id",
-  // auth,
-  // authorize(
-  //   "ADMIN",
-  //   "RECEPTIONIST"
-  // ),
+  auth,
+  authorize(
+    "ADMIN",
+    "RECEPTIONIST"
+  ),
   studentController.getStudentById
 );
 

@@ -13,9 +13,15 @@ const razorpay =
 const generateReceiptNo =
   require("../utils/generateReceiptNo");
 
+const {
+  calculateMonthlyFee,
+  calculateMonthWiseLateFee,
+} = require("../utils/calculateStudentFee");
 
-const Student = require("../models/Student");
-const calculateStudentFee = require("../utils/calculateStudentFee");
+const {
+  getFeeSnapshotForDate,
+  calculateAccruedMonthlyFee,
+} = require("../utils/studentPromotionFee");
 
 // =====================================================
 // Allowed Fee Heads
@@ -30,6 +36,8 @@ const ALLOWED_FEE_HEADS = [
   "FUNCTION",
   "SMART_CLASS",
   "OTHER",
+  "LATE_FEE",
+  "OPENING_DUE",
   "ALL",
 ];
 
@@ -56,23 +64,11 @@ const ALLOWED_DISCOUNT_TYPES = [
 // =====================================================
 // Lump Sum Configuration
 // =====================================================
-//
-// Lump Sum available:
-//
-// APRIL
-// MAY
-// JUNE
-// JULY
-// AUGUST
-//
-// =====================================================
 
 const LUMP_SUM_START_MONTH = 3; // April
-const LUMP_SUM_END_MONTH = 7;   // August
+const LUMP_SUM_END_MONTH = 7; // August
 
 // Additional 10% discount
-// on eligible monthly fee
-
 const LUMP_SUM_MONTHLY_DISCOUNT = 0.10;
 
 // =====================================================
@@ -80,24 +76,22 @@ const LUMP_SUM_MONTHLY_DISCOUNT = 0.10;
 // =====================================================
 
 const validateFeeHead = (feeHead) => {
-  console.log("========== FEE HEAD VALIDATION ==========");
-  console.log("Received feeHead:", JSON.stringify(feeHead));
-  console.log("ALLOWED_FEE_HEADS:", ALLOWED_FEE_HEADS);
-  console.log(
-    "Is All allowed:",
-    ALLOWED_FEE_HEADS.includes("All")
-  );
-  console.log(
-    "Is received value allowed:",
-    ALLOWED_FEE_HEADS.includes(feeHead)
-  );
-  console.log("=========================================");
+  const normalizedFeeHead =
+    String(feeHead || "")
+      .trim()
+      .toUpperCase();
 
-  if (!ALLOWED_FEE_HEADS.includes(feeHead)) {
-    throw new Error("Invalid fee head");
+  if (
+    !ALLOWED_FEE_HEADS.includes(
+      normalizedFeeHead
+    )
+  ) {
+    throw new Error(
+      "Invalid fee head"
+    );
   }
 
-  return feeHead;
+  return normalizedFeeHead;
 };
 
 // =====================================================
@@ -108,7 +102,11 @@ const validatePaymentType = (
   paymentType
 ) => {
   const finalPaymentType =
-    paymentType || "REGULAR";
+    String(
+      paymentType || "REGULAR"
+    )
+      .trim()
+      .toUpperCase();
 
   if (
     !ALLOWED_PAYMENT_TYPES.includes(
@@ -131,7 +129,11 @@ const validateFeeDiscountType = (
   feeDiscountType
 ) => {
   const finalDiscountType =
-    feeDiscountType || "NONE";
+    String(
+      feeDiscountType || "NONE"
+    )
+      .trim()
+      .toUpperCase();
 
   if (
     !ALLOWED_DISCOUNT_TYPES.includes(
@@ -179,10 +181,10 @@ const validateAmount = (
 // Backward compatibility:
 //
 // isLumpSum: true
-//      -> LUMP_SUM
+//   -> LUMP_SUM
 //
 // isLumpSum: false
-//      -> REGULAR
+//   -> REGULAR
 //
 // paymentType has priority.
 //
@@ -228,9 +230,10 @@ const getStudent = async (
   }
 
   const student =
-    await studentRepository.findByStudentId(
-      studentId
-    );
+    await studentRepository
+      .findByStudentId(
+        studentId
+      );
 
   if (!student) {
     throw new Error(
@@ -280,7 +283,7 @@ const validateDueAmount = (
     currentDueFee
   ) {
     throw new Error(
-      `Amount cannot be greater than due fee. Due fee is ₹${currentDueFee}`
+      `Amount cannot be greater than due fee. Due fee is â‚¹${currentDueFee}`
     );
   }
 
@@ -295,47 +298,59 @@ const validateDueAmount = (
 
 const getOriginalFeeHeadAmount = (
   student,
-  feeHead
+  feeHead,
+  currentDate = new Date()
 ) => {
+  const fees =
+    getFeeSnapshotForDate(
+      student,
+      currentDate
+    ).fees;
+
   switch (feeHead) {
     case "ADMISSION":
       return Number(
-        student.admissionFee || 0
+        fees.admissionFee ||
+          0
       );
 
     case "MONTHLY":
       return Number(
-        student.monthlyFee || 0
+        fees.monthlyFee || 0
       );
 
     case "EXAM":
       return Number(
-        student.examFee || 0
+        fees.examFee || 0
       );
 
     case "SPORT":
       return Number(
-        student.sportFee || 0
+        fees.sportFee || 0
       );
 
     case "COMPUTER":
       return Number(
-        student.computerFee || 0
+        fees.computerFee ||
+          0
       );
 
     case "FUNCTION":
       return Number(
-        student.functionFee || 0
+        fees.functionFee ||
+          0
       );
 
     case "SMART_CLASS":
       return Number(
-        student.smartClassFee || 0
+        fees.smartClassFee ||
+          0
       );
 
     case "OTHER":
       return Number(
-        student.otherCharges || 0
+        fees.otherCharges ||
+          0
       );
 
     default:
@@ -457,12 +472,14 @@ const getEffectiveFeeHeadAmount = (
     originalAmount.toFixed(2)
   );
 };
+
 // =====================================================
 // Get Normal Monthly Fee
 // =====================================================
 
 const getNormalMonthlyFee = (
-  student
+  student,
+  currentDate = new Date()
 ) => {
   const discountType =
     validateFeeDiscountType(
@@ -471,7 +488,10 @@ const getNormalMonthlyFee = (
 
   const monthlyFee =
     Number(
-      student.monthlyFee || 0
+      getFeeSnapshotForDate(
+        student,
+        currentDate
+      ).fees.monthlyFee || 0
     );
 
   if (
@@ -511,7 +531,6 @@ const getNormalMonthlyFee = (
   }
 };
 
-
 // =====================================================
 // Monthly Late Fee
 // =====================================================
@@ -519,48 +538,47 @@ const getNormalMonthlyFee = (
 // Monthly Late Fee Rule:
 //
 // 1st - 20th:
-//   Late Fee = ₹0
+//   Late Fee = â‚¹0
 //
 // 21st - Last Day:
-//   Late Fee = ₹20
+//   Late Fee = â‚¹20
 //
 // After Month End:
-//   Late Fee = ₹20 + ₹30
-//            = ₹50 total
+//   Late Fee = â‚¹50 total
 //
 // =====================================================
 
 const getMonthlyLateFee = (
   currentDate = new Date()
 ) => {
-  const date = new Date(currentDate);
+  const date =
+    new Date(currentDate);
 
-  if (Number.isNaN(date.getTime())) {
-    throw new Error("Invalid current date");
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    throw new Error(
+      "Invalid current date"
+    );
   }
 
-  const day = date.getDate();
+  const day =
+    date.getDate();
 
-  // -----------------------------------------------
   // 1st - 20th
-  // -----------------------------------------------
-
   if (day <= 20) {
     return 0;
   }
 
-  // -----------------------------------------------
   // 21st - Last Day
-  // -----------------------------------------------
-
   if (day > 20) {
     return 20;
   }
 
   return 0;
 };
-
-
 
 // =====================================================
 // Check Lump Sum Availability
@@ -587,9 +605,9 @@ const isLumpSumAvailable = (
 
   return (
     month >=
-    LUMP_SUM_START_MONTH &&
+      LUMP_SUM_START_MONTH &&
     month <=
-    LUMP_SUM_END_MONTH
+      LUMP_SUM_END_MONTH
   );
 };
 
@@ -602,7 +620,7 @@ const isLumpSumAvailable = (
 // =====================================================
 
 const getAcademicYear = (
-  currentDate = new Date()
+    currentDate = new Date()
 ) => {
   const date =
     new Date(currentDate);
@@ -924,12 +942,15 @@ const getNormalOneTimeFees = (
 // =====================================================
 
 const getPaidFeeHeadAmounts = async (
-  student
+  student,
+  providedHistory = null
 ) => {
   const history =
-    await feeRepository.getFeeHistory(
-      student.studentId
-    );
+    Array.isArray(providedHistory)
+      ? providedHistory
+      : await feeRepository.getFeeHistory(
+        student.studentId
+      );
 
   const paid = {
     ADMISSION: 0,
@@ -940,38 +961,705 @@ const getPaidFeeHeadAmounts = async (
     FUNCTION: 0,
     SMART_CLASS: 0,
     OTHER: 0,
+    LATE_FEE: 0,
+    OPENING_DUE: 0,
   };
 
   for (const fee of history || []) {
-    if (fee.paymentStatus !== "SUCCESS") {
+    const paymentStatus =
+      String(
+        fee?.paymentStatus || ""
+      )
+        .trim()
+        .toUpperCase();
+
+    if (
+      paymentStatus !== "SUCCESS"
+    ) {
       continue;
     }
 
-    // New / corrected records
-    if (fee.feeBreakdown) {
-      for (const head of Object.keys(paid)) {
-        paid[head] += Number(
-          fee.feeBreakdown?.[head] || 0
-        );
+    // ===============================================
+    // New / Corrected Records
+    // ===============================================
+    //
+    // When a payment contains feeBreakdown, each
+    // allocated amount must be counted against its
+    // actual fee head.
+    //
+    // Example:
+    //
+    // Total Payment = 110
+    // MONTHLY       = 75
+    // Other Heads   = 35
+    //
+    // This prevents the complete 110 from being
+    // counted as MONTHLY only.
+    //
+    // ===============================================
+
+    const feeBreakdown =
+      typeof fee?.feeBreakdown
+        ?.toObject === "function"
+        ? fee.feeBreakdown.toObject()
+        : fee?.feeBreakdown;
+
+    let hasAllocatedBreakdown =
+      false;
+
+    const allocatedAmounts = {};
+
+    if (
+      feeBreakdown &&
+      typeof feeBreakdown ===
+        "object"
+    ) {
+      for (
+        const head of Object.keys(
+          paid
+        )
+      ) {
+        const headAmount =
+          Number(
+            feeBreakdown[head] || 0
+          );
+
+        if (
+          !Number.isFinite(
+            headAmount
+          ) ||
+          headAmount < 0
+        ) {
+          continue;
+        }
+
+        allocatedAmounts[head] =
+          headAmount;
+
+        if (headAmount > 0) {
+          hasAllocatedBreakdown =
+            true;
+        }
       }
 
-      continue;
+      if (
+        hasAllocatedBreakdown
+      ) {
+        for (
+          const head of Object.keys(
+            paid
+          )
+        ) {
+          paid[head] += Number(
+            allocatedAmounts[head] || 0
+          );
+        }
+
+        continue;
+      }
     }
 
-    // Old records
+    // ===============================================
+    // Old Records Fallback
+    // ===============================================
+    //
+    // Old records may not contain feeBreakdown.
+    // In that case, use feeHead + amount.
+    //
+    // ===============================================
+
+    const legacyFeeHead =
+      String(
+        fee?.feeHead || ""
+      )
+        .trim()
+        .toUpperCase();
+
+    const legacyAmount =
+      Number(
+        fee?.amount || 0
+      );
+
     if (
       Object.prototype.hasOwnProperty.call(
         paid,
-        fee.feeHead
+        legacyFeeHead
+      ) &&
+      Number.isFinite(
+        legacyAmount
+      ) &&
+      legacyAmount > 0
+    ) {
+      paid[legacyFeeHead] +=
+        legacyAmount;
+    }
+  }
+
+  for (
+    const head of Object.keys(
+      paid
+    )
+  ) {
+    paid[head] =
+      Number(
+        paid[head].toFixed(2)
+      );
+  }
+
+  return paid;
+};
+
+
+// =====================================================
+// Fee Month Helpers
+// =====================================================
+
+const MONTH_KEY_PATTERN =
+  /^\d{4}-(0[1-9]|1[0-2])$/;
+
+const getMonthKey = (dateValue) => {
+  const date = new Date(dateValue);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return null;
+  }
+
+  return `${date.getFullYear()}-${String(
+    date.getMonth() + 1
+  ).padStart(2, "0")}`;
+};
+
+const normalizePaidMonthEntry = (
+  entry,
+  effectiveMonthlyFee
+) => {
+  if (
+    typeof entry === "string"
+  ) {
+    const month = entry.trim();
+
+    return MONTH_KEY_PATTERN.test(
+      month
+    )
+      ? month
+      : null;
+  }
+
+  if (
+    !entry ||
+    typeof entry !== "object"
+  ) {
+    return null;
+  }
+
+  const month = String(
+    entry.month || ""
+  ).trim();
+
+  if (
+    !MONTH_KEY_PATTERN.test(
+      month
+    )
+  ) {
+    return null;
+  }
+
+  const explicitlyPaid =
+    entry.paid === true ||
+    entry.isPaid === true ||
+    String(
+      entry.status || ""
+    ).toUpperCase() === "PAID";
+
+  const paidAmount = Number(
+    entry.monthlyPaid ??
+    entry.amount ??
+    0
+  );
+
+  const fullyPaidByAmount =
+    effectiveMonthlyFee > 0 &&
+    Number.isFinite(
+      paidAmount
+    ) &&
+    paidAmount + 0.001 >=
+      effectiveMonthlyFee;
+
+  return (
+    explicitlyPaid ||
+    fullyPaidByAmount
+  )
+    ? month
+    : null;
+};
+
+const getStudentFeeStartDate = (
+  student
+) => {
+  if (
+    student.feeStartDate
+  ) {
+    const configuredDate =
+      new Date(
+        student.feeStartDate
+      );
+
+    if (
+      !Number.isNaN(
+        configuredDate.getTime()
       )
     ) {
-      paid[fee.feeHead] += Number(
-        fee.amount || 0
+      return configuredDate;
+    }
+  }
+
+  const admissionDate =
+    new Date(
+      student.admissionDate
+    );
+
+  if (
+    Number.isNaN(
+      admissionDate.getTime()
+    )
+  ) {
+    throw new Error(
+      "Invalid fee start date"
+    );
+  }
+
+  if (
+    student.feeStartFrom ===
+    "ADMISSION_DATE"
+  ) {
+    return new Date(
+      admissionDate.getFullYear(),
+      admissionDate.getMonth(),
+      admissionDate.getDate()
+    );
+  }
+
+  return new Date(
+    admissionDate.getFullYear(),
+    admissionDate.getMonth() + 1,
+    1
+  );
+};
+
+const getPaidFeeMonths = ({
+  student,
+  history = [],
+  monthlyPaid = 0,
+  feeStartDate,
+  monthlyDetails = [],
+}) => {
+  const effectiveMonthlyFee =
+    getNormalMonthlyFee(
+      student
+    );
+
+  const monthlyFeeByMonth =
+    new Map(
+      (Array.isArray(
+        monthlyDetails
+      )
+        ? monthlyDetails
+        : []
+      )
+        .map((detail) => [
+          String(
+            detail?.month || ""
+          ).trim(),
+          Number(
+            detail
+              ?.effectiveMonthlyFee ||
+            0
+          ),
+        ])
+        .filter(
+          ([month, amount]) =>
+            MONTH_KEY_PATTERN.test(
+              month
+            ) &&
+            Number.isFinite(
+              amount
+            ) &&
+            amount >= 0
+        )
+    );
+
+  const explicitEntries = [];
+
+  if (
+    Array.isArray(
+      student.paidFeeMonths
+    )
+  ) {
+    explicitEntries.push(
+      ...student.paidFeeMonths
+    );
+  }
+
+  for (
+    const fee of history || []
+  ) {
+    if (
+      fee.paymentStatus !==
+      "SUCCESS"
+    ) {
+      continue;
+    }
+
+    if (
+      Array.isArray(
+        fee.paidFeeMonths
+      )
+    ) {
+      explicitEntries.push(
+        ...fee.paidFeeMonths
+      );
+    }
+
+    if (
+      Array.isArray(
+        fee.feeMonths
+      )
+    ) {
+      explicitEntries.push(
+        ...fee.feeMonths
       );
     }
   }
 
-  return paid;
+  const explicitMonths =
+    new Set(
+      explicitEntries
+        .map(
+          (entry) => {
+            const entryMonth =
+              typeof entry ===
+              "string"
+                ? entry.trim()
+                : String(
+                  entry?.month ||
+                  ""
+                ).trim();
+
+            const monthFee =
+              monthlyFeeByMonth.has(
+                entryMonth
+              )
+                ? monthlyFeeByMonth.get(
+                  entryMonth
+                )
+                : effectiveMonthlyFee;
+
+            return normalizePaidMonthEntry(
+              entry,
+              monthFee
+            );
+          }
+        )
+        .filter(Boolean)
+    );
+
+  if (
+    explicitMonths.size > 0
+  ) {
+    return [
+      ...explicitMonths,
+    ].sort();
+  }
+
+  const paidAmount = Number(
+    monthlyPaid || 0
+  );
+
+  if (
+    !Number.isFinite(
+      paidAmount
+    ) ||
+    paidAmount <= 0
+  ) {
+    return [];
+  }
+
+  const promotionAwareSchedule =
+    (Array.isArray(
+      monthlyDetails
+    )
+      ? monthlyDetails
+      : []
+    )
+      .map((detail) => ({
+        month:
+          String(
+            detail?.month || ""
+          ).trim(),
+
+        effectiveMonthlyFee:
+          Number(
+            detail
+              ?.effectiveMonthlyFee ||
+            0
+          ),
+      }))
+      .filter(
+        (detail) =>
+          MONTH_KEY_PATTERN.test(
+            detail.month
+          ) &&
+          Number.isFinite(
+            detail
+              .effectiveMonthlyFee
+          ) &&
+          detail
+            .effectiveMonthlyFee >= 0
+      );
+
+  if (
+    promotionAwareSchedule.length > 0
+  ) {
+    let remainingPaidAmount =
+      paidAmount;
+
+    const paidMonths = [];
+
+    for (
+      const detail of
+      promotionAwareSchedule
+    ) {
+      const monthFee =
+        detail
+          .effectiveMonthlyFee;
+
+      if (monthFee <= 0) {
+        paidMonths.push(
+          detail.month
+        );
+
+        continue;
+      }
+
+      if (
+        remainingPaidAmount +
+        0.001 <
+        monthFee
+      ) {
+        break;
+      }
+
+      remainingPaidAmount =
+        Math.max(
+          remainingPaidAmount -
+          monthFee,
+          0
+        );
+
+      paidMonths.push(
+        detail.month
+      );
+    }
+
+    return paidMonths;
+  }
+
+  if (
+    effectiveMonthlyFee <= 0
+  ) {
+    return [];
+  }
+
+  // A partially paid month is intentionally not
+  // treated as a fully paid month.
+  const fullyPaidMonthCount =
+    Math.floor(
+      (
+        paidAmount +
+        0.001
+      ) /
+      effectiveMonthlyFee
+    );
+
+  const firstMonth =
+    new Date(
+      feeStartDate.getFullYear(),
+      feeStartDate.getMonth(),
+      1
+    );
+
+  const paidMonths = [];
+
+  for (
+    let index = 0;
+    index < fullyPaidMonthCount;
+    index += 1
+  ) {
+    paidMonths.push(
+      getMonthKey(
+        new Date(
+          firstMonth.getFullYear(),
+          firstMonth.getMonth() +
+            index,
+          1
+        )
+      )
+    );
+  }
+
+  return paidMonths.filter(Boolean);
+};
+
+const getLateFeeSummary = ({
+  student,
+  feeStartDate,
+  currentDate = new Date(),
+  paidFeeMonths = [],
+  paidLateFee = 0,
+}) => {
+  // à¤ªà¤¹à¤²à¥‡ waiver à¤•à¥‡ à¤¬à¤¿à¤¨à¤¾ original late fee à¤¨à¤¿à¤•à¤¾à¤²à¥‡à¤‚
+  const originalDetails =
+    calculateMonthWiseLateFee(
+      feeStartDate,
+      currentDate,
+      paidFeeMonths,
+      student.feeDiscountType || "NONE",
+      []
+    );
+
+  const waiverByMonth = new Map();
+
+  const lateFeeWaivers =
+    Array.isArray(student.lateFeeWaivers)
+      ? student.lateFeeWaivers
+      : [];
+
+  for (const waiver of lateFeeWaivers) {
+    const month =
+      String(waiver?.month || "").trim();
+
+    const amount =
+      Number(waiver?.waivedAmount || 0);
+
+    if (
+      !/^\d{4}-(0[1-9]|1[0-2])$/.test(month) ||
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
+      continue;
+    }
+
+    waiverByMonth.set(
+      month,
+      Number(waiverByMonth.get(month) || 0) +
+        amount
+    );
+  }
+
+  let remainingPaidLateFee =
+    Math.max(Number(paidLateFee || 0), 0);
+
+  const monthWiseLateFee =
+    originalDetails.map((item) => {
+      const lateFee =
+        Math.max(Number(item.lateFee || 0), 0);
+
+      // Paid late fee oldest month à¤¸à¥‡ adjust à¤¹à¥‹à¤—à¥€
+      const lateFeePaid =
+        Math.min(
+          remainingPaidLateFee,
+          lateFee
+        );
+
+      remainingPaidLateFee =
+        Math.max(
+          remainingPaidLateFee -
+            lateFeePaid,
+          0
+        );
+
+      const remainingAfterPayment =
+        Math.max(
+          lateFee - lateFeePaid,
+          0
+        );
+
+      const requestedWaiver =
+        Math.max(
+          Number(
+            waiverByMonth.get(item.month) || 0
+          ),
+          0
+        );
+
+      // à¤œà¤¿à¤¸ month à¤®à¥‡à¤‚ late fee payment à¤¹à¥ˆ,
+      // à¤‰à¤¸ à¤ªà¥‚à¤°à¥‡ month à¤ªà¤° waiver à¤²à¤¾à¤—à¥‚ à¤¨à¤¹à¥€à¤‚ à¤¹à¥‹à¤—à¤¾
+      const waivedAmount =
+        lateFeePaid > 0
+          ? 0
+          : Math.min(
+              requestedWaiver,
+              remainingAfterPayment
+            );
+
+      const payableLateFee =
+        Math.max(
+          remainingAfterPayment -
+            waivedAmount,
+          0
+        );
+
+      return {
+        ...item,
+
+        lateFee:
+          Number(lateFee.toFixed(2)),
+
+        lateFeePaid:
+          Number(lateFeePaid.toFixed(2)),
+
+        waivedAmount:
+          Number(waivedAmount.toFixed(2)),
+
+        payableLateFee:
+          Number(payableLateFee.toFixed(2)),
+
+        // Monthly fee payment status
+        paid:
+           Number(payableLateFee) > 0,
+      };
+    });
+
+  const total = (field) =>
+    Number(
+      monthWiseLateFee
+        .reduce(
+          (sum, item) =>
+            sum + Number(item[field] || 0),
+          0
+        )
+        .toFixed(2)
+    );
+
+  return {
+    lateFee:
+      total("lateFee"),
+
+    lateFeeWaived:
+      total("waivedAmount"),
+
+    lateFeePaid:
+      total("lateFeePaid"),
+
+    payableLateFee:
+      total("payableLateFee"),
+
+    monthWiseLateFee,
+  };
 };
 
 
@@ -1018,13 +1706,11 @@ const calculateFeeByHead = async ({
 
   let selectedHeads = [];
 
-  // ---------------------------------------------------
-  // ALL
-  // ---------------------------------------------------
-
   if (
     typeof feeHead === "string" &&
-    feeHead.toUpperCase() === "ALL"
+    feeHead
+      .trim()
+      .toUpperCase() === "ALL"
   ) {
     selectedHeads = [
       "ADMISSION",
@@ -1036,13 +1722,7 @@ const calculateFeeByHead = async ({
       "SMART_CLASS",
       "OTHER",
     ];
-  }
-
-  // ---------------------------------------------------
-  // Array
-  // ---------------------------------------------------
-
-  else if (
+  } else if (
     Array.isArray(feeHead)
   ) {
     selectedHeads =
@@ -1052,13 +1732,7 @@ const calculateFeeByHead = async ({
             .trim()
             .toUpperCase()
       );
-  }
-
-  // ---------------------------------------------------
-  // Single
-  // ---------------------------------------------------
-
-  else if (
+  } else if (
     typeof feeHead === "string"
   ) {
     selectedHeads = [
@@ -1066,9 +1740,7 @@ const calculateFeeByHead = async ({
         .trim()
         .toUpperCase(),
     ];
-  }
-
-  else {
+  } else {
     throw new Error(
       "feeHead is required"
     );
@@ -1088,7 +1760,7 @@ const calculateFeeByHead = async ({
   // Valid Fee Heads
   // ===================================================
 
-  const validHeads = [
+  const standardFeeHeads = [
     "ADMISSION",
     "MONTHLY",
     "EXAM",
@@ -1097,6 +1769,12 @@ const calculateFeeByHead = async ({
     "FUNCTION",
     "SMART_CLASS",
     "OTHER",
+  ];
+
+  const validHeads = [
+    ...standardFeeHeads,
+    "LATE_FEE",
+    "OPENING_DUE",
   ];
 
   const invalidHeads =
@@ -1121,34 +1799,20 @@ const calculateFeeByHead = async ({
   // Paid Fee History
   // ===================================================
 
+  const history =
+    await feeRepository
+      .getFeeHistory(
+        student.studentId
+      );
+
   const paid =
     await getPaidFeeHeadAmounts(
-      student
+      student,
+      history
     );
 
   // ===================================================
   // Fee Start Date
-  // ===================================================
-  //
-  // IMPORTANT:
-  //
-  // Student ke actual feeStartDate ko use karenge.
-  //
-  // Example:
-  //
-  // feeStartFrom = CUSTOM
-  // feeStartDate = 2026-04-01
-  //
-  // Then:
-  //
-  // April
-  // May
-  // June
-  // July
-  // August
-  //
-  // = 5 months
-  //
   // ===================================================
 
   let feeStartDate = null;
@@ -1215,105 +1879,214 @@ const calculateFeeByHead = async ({
     new Date();
 
   // ===================================================
-  // Calculate Accrued Months
+  // Promotion Helpers
   // ===================================================
 
-  let accruedMonths = 0;
+  const feeFieldByHead = {
+    ADMISSION:
+      "admissionFee",
 
-  // ===================================================
-  // TEST MODE
-  //
-  // 1 minute = 1 month
-  //
-  // ===================================================
+    MONTHLY:
+      "monthlyFee",
 
-  if (
-    process.env.TEST_FEE_MODE ===
-    "true"
-  ) {
-    const difference =
-      currentDate.getTime() -
-      feeStartDate.getTime();
+    EXAM:
+      "examFee",
 
-    if (
-      difference <= 0
+    SPORT:
+      "sportFee",
+
+    COMPUTER:
+      "computerFee",
+
+    FUNCTION:
+      "functionFee",
+
+    SMART_CLASS:
+      "smartClassFee",
+
+    OTHER:
+      "otherCharges",
+  };
+
+  const discountType =
+    validateFeeDiscountType(
+      student.feeDiscountType
+    );
+
+  /*
+   * Promotion history में saved fee
+   * values को valid number में बदलता है।
+   */
+  const normalizePromotionFees = (
+    source = {}
+  ) => {
+    const normalizedFees = {};
+
+    for (
+      const head of
+        standardFeeHeads
     ) {
-      accruedMonths = 1;
-    } else {
-      const minutes =
-        Math.floor(
-          difference /
-            (60 * 1000)
+      const fieldName =
+        feeFieldByHead[head];
+
+      const amount =
+        Number(
+          source?.[fieldName] || 0
         );
 
-      accruedMonths =
-        minutes + 1;
+      normalizedFees[fieldName] =
+        Number.isFinite(amount) &&
+        amount >= 0
+          ? Number(
+            amount.toFixed(2)
+          )
+          : 0;
     }
-  }
 
-  // ===================================================
-  // PRODUCTION MODE
-  // ===================================================
+    return normalizedFees;
+  };
 
-  else {
-    const start =
-      new Date(
-        feeStartDate
+  /*
+   * Student का discount promotion
+   * fee snapshot पर apply करता है।
+   */
+  const applyStudentDiscount = (
+    source = {},
+    excludeAdmission = false
+  ) => {
+    const fees =
+      normalizePromotionFees(
+        source
       );
 
-    const current =
-      new Date(
-        currentDate
-      );
+    /*
+     * Promotion पर नई admission fee
+     * apply नहीं होगी।
+     */
+    if (excludeAdmission) {
+      fees.admissionFee = 0;
+    }
 
-    start.setHours(
-      0,
-      0,
-      0,
-      0
-    );
-
-    current.setHours(
-      0,
-      0,
-      0,
-      0
-    );
-
+    /*
+     * RTE:
+     * सभी fees zero।
+     */
     if (
-      current >= start
+      discountType === "RTE"
     ) {
-      accruedMonths =
-        (
-          current.getFullYear() -
-          start.getFullYear()
-        ) *
-          12 +
-        (
-          current.getMonth() -
-          start.getMonth()
-        ) +
-        1;
+      for (
+        const head of
+          standardFeeHeads
+      ) {
+        fees[
+          feeFieldByHead[head]
+        ] = 0;
+      }
     }
-  }
 
-  // ===================================================
-  // Effective Monthly Fee
-  // ===================================================
+    /*
+     * SIBLING:
+     * Monthly fee पर 20% discount।
+     */
+    else if (
+      discountType === "SIBLING"
+    ) {
+      fees.monthlyFee =
+        Number(
+          (
+            fees.monthlyFee * 0.8
+          ).toFixed(2)
+        );
+    }
 
-  const effectiveMonthlyFee =
-    getNormalMonthlyFee(
-      student
+    /*
+     * GIRL:
+     * केवल original admission fee
+     * पर 50% discount।
+     */
+    else if (
+      discountType === "GIRL"
+    ) {
+      fees.admissionFee =
+        Number(
+          (
+            fees.admissionFee * 0.5
+          ).toFixed(2)
+        );
+    }
+
+    return fees;
+  };
+
+  const getPromotionDate = (
+    promotion
+  ) => {
+    return new Date(
+      promotion?.effectiveFrom ||
+      promotion?.appliedAt ||
+      promotion?.promotedAt
     );
+  };
+
+  // ===================================================
+  // Applied Promotion History
+  // ===================================================
+
+  const appliedPromotions = (
+    Array.isArray(
+      student.classPromotionHistory
+    )
+      ? student.classPromotionHistory
+      : []
+  )
+    .filter((promotion) => {
+      const status =
+        String(
+          promotion?.status ||
+          "APPLIED"
+        )
+          .trim()
+          .toUpperCase();
+
+      const promotionDate =
+        getPromotionDate(
+          promotion
+        );
+
+      return (
+        status === "APPLIED" &&
+        !Number.isNaN(
+          promotionDate.getTime()
+        ) &&
+        promotionDate <= currentDate
+      );
+    })
+    .sort(
+      (first, second) =>
+        getPromotionDate(first) -
+        getPromotionDate(second)
+    );
+
+  // ===================================================
+  // Promotion-Aware Monthly Calculation
+  // ===================================================
+
+  const monthlyCalculation =
+    calculateAccruedMonthlyFee({
+      student,
+      feeStartDate,
+      currentDate,
+    });
+
+  const accruedMonths =
+    monthlyCalculation
+      .accruedMonths;
+
+  const monthlyDetails =
+    monthlyCalculation.details;
 
   // ===================================================
   // Lump Sum Check
-  // ===================================================
-  //
-  // If successful lump sum exists for the
-  // current academic year, future monthly
-  // fees should not be generated.
-  //
   // ===================================================
 
   let activeLumpSum =
@@ -1321,9 +2094,10 @@ const calculateFeeByHead = async ({
 
   try {
     const lumpSumPayments =
-      await feeRepository.getLumpSumPayments(
-        student.studentId
-      );
+      await feeRepository
+        .getLumpSumPayments(
+          student.studentId
+        );
 
     if (
       Array.isArray(
@@ -1380,7 +2154,7 @@ const calculateFeeByHead = async ({
               const paymentDate =
                 new Date(
                   payment.paymentDate ||
-                    payment.createdAt
+                  payment.createdAt
                 );
 
               if (
@@ -1404,8 +2178,6 @@ const calculateFeeByHead = async ({
   } catch (
     error
   ) {
-    // Do not break fee calculation
-    // if lump sum history is unavailable.
     activeLumpSum = false;
   }
 
@@ -1421,14 +2193,140 @@ const calculateFeeByHead = async ({
     monthlyTotal = 0;
   } else {
     monthlyTotal =
-      effectiveMonthlyFee *
-      accruedMonths;
+      monthlyCalculation.total;
   }
 
   monthlyTotal =
     Number(
       monthlyTotal.toFixed(2)
     );
+
+  // ===================================================
+  // Cumulative Promotion Fees
+  // ===================================================
+
+  let promotionHeadTotals =
+    null;
+
+  if (
+    appliedPromotions.length > 0 &&
+    appliedPromotions[0].fromFees
+  ) {
+    /*
+     * First promotion के fromFees में
+     * student की original fees हैं।
+     */
+    const originalFees =
+      applyStudentDiscount(
+        appliedPromotions[0]
+          .fromFees
+      );
+
+    promotionHeadTotals = {};
+
+    for (
+      const head of
+        standardFeeHeads
+    ) {
+      const fieldName =
+        feeFieldByHead[head];
+
+      /*
+       * Original monthly fees पहले से
+       * monthlyTotal में calculate हैं।
+       */
+      promotionHeadTotals[head] =
+        head === "MONTHLY"
+          ? 0
+          : Number(
+            originalFees[
+              fieldName
+            ] || 0
+          );
+    }
+
+    /*
+     * प्रत्येक applied promotion की
+     * नई class fees cumulative जोड़ें।
+     */
+    for (
+      const promotion of
+        appliedPromotions
+    ) {
+      if (!promotion.toFees) {
+        continue;
+      }
+
+      /*
+       * excludeAdmission = true:
+       * नई admission fee नहीं जुड़ेगी।
+       */
+      const promotionFees =
+        applyStudentDiscount(
+          promotion.toFees,
+          true
+        );
+
+      for (
+        const head of
+          standardFeeHeads
+      ) {
+        const fieldName =
+          feeFieldByHead[head];
+
+        promotionHeadTotals[head] =
+          Number(
+            (
+              Number(
+                promotionHeadTotals[
+                  head
+                ] || 0
+              ) +
+              Number(
+                promotionFees[
+                  fieldName
+                ] || 0
+              )
+            ).toFixed(2)
+          );
+      }
+    }
+  }
+
+  // ===================================================
+  // Paid Months + Month-wise Late Fee
+  // ===================================================
+
+  const paidFeeMonths =
+    getPaidFeeMonths({
+      student,
+      history,
+
+      monthlyPaid:
+        paid.MONTHLY,
+
+      feeStartDate,
+      monthlyDetails,
+    });
+
+  const lateFeeSummary =
+    activeLumpSum
+      ? {
+        lateFee: 0,
+        lateFeeWaived: 0,
+        lateFeePaid: 0,
+        payableLateFee: 0,
+        monthWiseLateFee: [],
+      }
+      : getLateFeeSummary({
+        student,
+        feeStartDate,
+        currentDate,
+        paidFeeMonths,
+
+        paidLateFee:
+          paid.LATE_FEE,
+      });
 
   // ===================================================
   // Response Objects
@@ -1449,30 +2347,57 @@ const calculateFeeByHead = async ({
   for (
     const head of selectedHeads
   ) {
-    let effectiveFee = 0;
+    if (
+      head === "LATE_FEE" ||
+      head === "OPENING_DUE"
+    ) {
+      continue;
+    }
 
-    // -------------------------------------------------
-    // MONTHLY
-    // -------------------------------------------------
+    let effectiveFee = 0;
 
     if (
       head === "MONTHLY"
     ) {
+      /*
+       * Previous accrued monthly fees
+       * + promotion की नई monthly fee।
+       */
       effectiveFee =
-        monthlyTotal;
-    }
-
-    // -------------------------------------------------
-    // Other Fee Heads
-    // -------------------------------------------------
-
-    else {
+        monthlyTotal +
+        Number(
+          promotionHeadTotals
+            ?.MONTHLY || 0
+        );
+    } else if (
+      promotionHeadTotals
+    ) {
+      /*
+       * Original fee
+       * + सभी applied promotions की fee।
+       */
+      effectiveFee =
+        Number(
+          promotionHeadTotals[
+            head
+          ] || 0
+        );
+    } else {
+      /*
+       * जिन students का promotion
+       * नहीं हुआ उनके लिए existing flow।
+       */
       effectiveFee =
         getEffectiveFeeHeadAmount(
           student,
           head
         );
     }
+
+    effectiveFee =
+      Number(
+        effectiveFee.toFixed(2)
+      );
 
     const paidAmount =
       Number(
@@ -1514,32 +2439,50 @@ const calculateFeeByHead = async ({
   // ===================================================
   // Opening Due
   // ===================================================
-  //
-  // Opening due is an overall student-level due.
-  //
-  // Therefore it is added ONLY when ALL heads
-  // are requested.
-  //
-  // ===================================================
 
   const isAll =
-    selectedHeads.length ===
-    validHeads.length;
+    standardFeeHeads.every(
+      (head) =>
+        selectedHeads.includes(
+          head
+        )
+    );
 
   const openingDue =
     Number(
       student.openingDue || 0
     );
 
+  const openingDuePaid =
+    Number(
+      paid.OPENING_DUE || 0
+    );
+
+  const openingDueBalance =
+    Math.max(
+      openingDue -
+        openingDuePaid,
+      0
+    );
+
+  const includeOpeningDue =
+    isAll ||
+    selectedHeads.includes(
+      "OPENING_DUE"
+    );
+
   if (
-    isAll &&
+    includeOpeningDue &&
     openingDue > 0
   ) {
     totalFee +=
       openingDue;
 
+    totalPaid +=
+      openingDuePaid;
+
     totalDue +=
-      openingDue;
+      openingDueBalance;
 
     feeBreakdown.OPENING_DUE =
       Number(
@@ -1547,12 +2490,47 @@ const calculateFeeByHead = async ({
       );
 
     paidBreakdown.OPENING_DUE =
-      0;
+      Number(
+        openingDuePaid.toFixed(2)
+      );
 
     dueBreakdown.OPENING_DUE =
       Number(
-        openingDue.toFixed(2)
+        openingDueBalance.toFixed(2)
       );
+  }
+
+  // ===================================================
+  // Late Fee
+  // ===================================================
+
+  const includeLateFee =
+    isAll ||
+    selectedHeads.includes(
+      "MONTHLY"
+    ) ||
+    selectedHeads.includes(
+      "LATE_FEE"
+    );
+
+  if (includeLateFee) {
+    feeBreakdown.LATE_FEE =
+      lateFeeSummary.lateFee;
+
+    paidBreakdown.LATE_FEE =
+      lateFeeSummary.lateFeePaid;
+
+    dueBreakdown.LATE_FEE =
+      lateFeeSummary.payableLateFee;
+
+    totalFee +=
+      lateFeeSummary.lateFee;
+
+    totalPaid +=
+      lateFeeSummary.lateFeePaid;
+
+    totalDue +=
+      lateFeeSummary.payableLateFee;
   }
 
   // ===================================================
@@ -1594,6 +2572,8 @@ const calculateFeeByHead = async ({
 
     accruedMonths,
 
+    monthlyDetails,
+
     feeDiscountType:
       student.feeDiscountType,
 
@@ -1608,260 +2588,37 @@ const calculateFeeByHead = async ({
     paidFee:
       totalPaid,
 
+    paidFeeMonths,
+
+    lateFee:
+      includeLateFee
+        ? lateFeeSummary.lateFee
+        : 0,
+
+    lateFeeWaived:
+      includeLateFee
+        ? lateFeeSummary.lateFeeWaived
+        : 0,
+
+    lateFeePaid:
+      includeLateFee
+        ? lateFeeSummary.lateFeePaid
+        : 0,
+
+    payableLateFee:
+      includeLateFee
+        ? lateFeeSummary.payableLateFee
+        : 0,
+
+    lateFeeDetails:
+      includeLateFee
+        ? lateFeeSummary.monthWiseLateFee
+        : [],
+
     dueFee:
       totalDue,
   };
 };
-
-// =====================================================
-// Calculate Lump Sum Details
-// =====================================================
-
-// const calculateLumpSumDetails = async (
-//   student,
-//   currentDate = new Date()
-// ) => {
-//   const discountType =
-//     validateFeeDiscountType(
-//       student.feeDiscountType
-//     );
-
-//   // -------------------------------------------------
-//   // Availability
-//   // -------------------------------------------------
-
-//   if (
-//     !isLumpSumAvailable(
-//       currentDate
-//     )
-//   ) {
-//     throw new Error(
-//       "Lump Sum discount is available only from April to August"
-//     );
-//   }
-
-//   // -------------------------------------------------
-//   // RTE
-//   // -------------------------------------------------
-
-//   if (
-//     discountType === "RTE"
-//   ) {
-//     return {
-//       eligible: false,
-
-//       reason:
-//         "RTE student already has 100% fee discount",
-
-//       paymentType:
-//         "LUMP_SUM",
-
-//       discountType,
-
-//       monthlyDiscountPercentage: 0,
-
-//       remainingMonths: 0,
-
-//       normalMonthlyFee: 0,
-
-//       lumpSumMonthlyFee: 0,
-
-//       remainingMonthlyAmount: 0,
-
-//       remainingOneTimeFees: 0,
-
-//       remainingAcademicFee: 0,
-
-//       additionalDiscount: 0,
-
-//       lumpSumAmount: 0,
-//     };
-//   }
-
-//   // -------------------------------------------------
-//   // Paid History
-//   // -------------------------------------------------
-
-//   const paid =
-//     await getPaidFeeHeadAmounts(
-//       student
-//     );
-
-//   // -------------------------------------------------
-//   // Remaining Months
-//   // -------------------------------------------------
-
-//   const remainingMonths =
-//     getRemainingAcademicMonths(
-//       currentDate
-//     );
-
-//   // -------------------------------------------------
-//   // Monthly Fee
-//   // -------------------------------------------------
-
-//   const normalMonthlyFee =
-//     getNormalMonthlyFee(
-//       student
-//     );
-
-//   const remainingMonthlyAmount =
-//     Number(
-//       (
-//         normalMonthlyFee *
-//         remainingMonths
-//       ).toFixed(2)
-//     );
-
-//   // -------------------------------------------------
-//   // One-Time Fees
-//   // -------------------------------------------------
-
-//   const oneTimeFees =
-//     getNormalOneTimeFees(
-//       student
-//     );
-
-//   const alreadyPaidOneTime =
-//     Number(
-//       paid.ADMISSION || 0
-//     ) +
-//     Number(
-//       paid.EXAM || 0
-//     ) +
-//     Number(
-//       paid.SPORT || 0
-//     ) +
-//     Number(
-//       paid.COMPUTER || 0
-//     ) +
-//     Number(
-//       paid.FUNCTION || 0
-//     ) +
-//     Number(
-//       paid.SMART_CLASS || 0
-//     ) +
-//     Number(
-//       paid.OTHER || 0
-//     );
-
-//   const remainingOneTimeFees =
-//     Number(
-//       Math.max(
-//         oneTimeFees -
-//         alreadyPaidOneTime,
-//         0
-//       ).toFixed(2)
-//     );
-
-//   // -------------------------------------------------
-//   // Normal Remaining Academic Fee
-//   // -------------------------------------------------
-
-//   const remainingAcademicFee =
-//     Number(
-//       (
-//         remainingMonthlyAmount +
-//         remainingOneTimeFees
-//       ).toFixed(2)
-//     );
-
-//   // -------------------------------------------------
-//   // Lump Sum Monthly Fee
-//   // -------------------------------------------------
-
-//   const lumpSumMonthlyFee =
-//     calculateLumpSumMonthlyFee(
-//       student
-//     );
-
-//   const lumpSumMonthlyTotal =
-//     Number(
-//       (
-//         lumpSumMonthlyFee *
-//         remainingMonths
-//       ).toFixed(2)
-//     );
-
-//   // -------------------------------------------------
-//   // Additional Discount
-//   // -------------------------------------------------
-
-//   let additionalDiscount = 0;
-
-//   if (
-//     discountType === "NONE" ||
-//     discountType === "GIRL"
-//   ) {
-//     additionalDiscount =
-//       Number(
-//         (
-//           remainingMonthlyAmount *
-//           LUMP_SUM_MONTHLY_DISCOUNT
-//         ).toFixed(2)
-//       );
-//   }
-
-//   // SIBLING:
-//   // Already gets 20%.
-//   // No extra lump sum discount.
-
-//   if (
-//     discountType === "SIBLING"
-//   ) {
-//     additionalDiscount = 0;
-//   }
-
-//   // -------------------------------------------------
-//   // Final Lump Sum Amount
-//   // -------------------------------------------------
-
-//   const lumpSumAmount =
-//     Number(
-//       Math.max(
-//         lumpSumMonthlyTotal +
-//         remainingOneTimeFees,
-//         0
-//       ).toFixed(2)
-//     );
-
-//   // -------------------------------------------------
-//   // Discount Percentage
-//   // -------------------------------------------------
-
-//   const monthlyDiscountPercentage =
-//     discountType === "NONE" ||
-//       discountType === "GIRL"
-//       ? 10
-//       : 0;
-
-//   return {
-//     eligible: true,
-
-//     paymentType:
-//       "LUMP_SUM",
-
-//     discountType,
-
-//     monthlyDiscountPercentage,
-
-//     remainingMonths,
-
-//     normalMonthlyFee,
-
-//     lumpSumMonthlyFee,
-
-//     remainingMonthlyAmount,
-
-//     remainingOneTimeFees,
-
-//     remainingAcademicFee,
-
-//     additionalDiscount,
-
-//     lumpSumAmount,
-//   };
-// };
 
 
 const calculateLumpSumDetails = async (
@@ -2024,30 +2781,35 @@ const calculateLumpSumDetails = async (
       : academicYearStartDate;
 
   // -------------------------------------------------
-  // Total Academic Months
+  // Promotion-Aware Academic Fee Schedule
   // -------------------------------------------------
+
+  const academicMonthlyCalculation =
+    calculateAccruedMonthlyFee({
+      student,
+      feeStartDate:
+        effectiveStartDate,
+      currentDate:
+        academicYearEnd,
+    });
+
+  const monthlyFeeSchedule =
+    academicMonthlyCalculation
+      .details;
 
   const totalAcademicMonths =
-    (
-      academicYearEnd.getFullYear() -
-      effectiveStartDate.getFullYear()
-    ) *
-    12 +
-    (
-      academicYearEnd.getMonth() -
-      effectiveStartDate.getMonth()
-    ) +
-    1;
+    academicMonthlyCalculation
+      .accruedMonths;
 
   // -------------------------------------------------
-  // Normal Monthly Fee
-  // IMPORTANT:
-  // Original monthly fee.
+  // Effective Monthly Fee
+  // Includes the student's normal discount.
   // -------------------------------------------------
 
   const normalMonthlyFee =
-    Number(
-      student.monthlyFee || 0
+    getNormalMonthlyFee(
+      student,
+      currentDate
     );
 
   // -------------------------------------------------
@@ -2080,45 +2842,57 @@ const calculateLumpSumDetails = async (
 
   // -------------------------------------------------
   // Already Paid Months
-  //
-  // Example:
-  //
-  // Monthly Fee = ₹15
-  // Paid = ₹110
-  //
-  // 110 / 15 = 7.33
-  // Paid months = 7
-  //
-  // But paid months cannot be greater
-  // than months already passed.
   // -------------------------------------------------
 
-  const calculatedPaidMonths =
-    normalMonthlyFee > 0
-      ? Math.floor(
-        monthlyPaid /
-        normalMonthlyFee
-      )
-      : 0;
+  let remainingMonthlyPaid =
+    Math.max(
+      monthlyPaid,
+      0
+    );
 
-  const alreadyPaidMonths =
-    Math.min(
+  let alreadyPaidMonths = 0;
+
+  for (
+    const monthDetail of
+    monthlyFeeSchedule
+  ) {
+    const monthFee =
+      Number(
+        monthDetail
+          .effectiveMonthlyFee || 0
+      );
+
+    if (monthFee <= 0) {
+      alreadyPaidMonths += 1;
+
+      continue;
+    }
+
+    if (
+      remainingMonthlyPaid + 0.01 <
+      monthFee
+    ) {
+      break;
+    }
+
+    remainingMonthlyPaid =
       Math.max(
-        calculatedPaidMonths,
+        remainingMonthlyPaid -
+        monthFee,
         0
-      ),
+      );
+
+    alreadyPaidMonths += 1;
+  }
+
+  alreadyPaidMonths =
+    Math.min(
+      alreadyPaidMonths,
       Math.max(
         passedMonths,
         0
       )
     );
-
-
-
-
-
-
-
 
   // -------------------------------------------------
   // Remaining Months
@@ -2131,77 +2905,18 @@ const calculateLumpSumDetails = async (
       0
     );
 
-
-
-  console.log(
-    "========== LUMP SUM DEBUG =========="
-  );
-
-  console.log(
-    "Fee Start Date:",
-    feeStartDate
-  );
-
-  console.log(
-    "Academic Start:",
-    academicYearStartDate
-  );
-
-  console.log(
-    "Academic End:",
-    academicYearEnd
-  );
-
-  console.log(
-    "Total Academic Months:",
-    totalAcademicMonths
-  );
-
-  console.log(
-    "Paid History:",
-    paid
-  );
-
-  console.log(
-    "Monthly Paid:",
-    monthlyPaid
-  );
-
-  console.log(
-    "Normal Monthly Fee:",
-    normalMonthlyFee
-  );
-
-  console.log(
-    "Already Paid Months:",
-    alreadyPaidMonths
-  );
-
-  console.log(
-    "Remaining Months:",
-    remainingMonths
-  );
-
-  console.log(
-    "===================================="
-  );
-
   // -------------------------------------------------
   // Remaining Monthly Amount
-  //
-  // NO DISCOUNT HERE
   // -------------------------------------------------
 
   const remainingMonthlyAmount =
     Number(
-      (
-        normalMonthlyFee *
-        remainingMonths
+      Math.max(
+        academicMonthlyCalculation
+          .total - monthlyPaid,
+        0
       ).toFixed(2)
     );
-
-
-
 
   // -------------------------------------------------
   // One-Time Fees
@@ -2258,20 +2973,6 @@ const calculateLumpSumDetails = async (
 
   // -------------------------------------------------
   // Lump Sum Discount
-  //
-  // IMPORTANT:
-  //
-  // Discount is calculated ONCE
-  // on TOTAL remaining monthly fee.
-  //
-  // Example:
-  //
-  // ₹15 × 5 months = ₹75
-  // 10% = ₹7.50
-  // Final = ₹67.50
-  //
-  // NOT:
-  // ₹13.50 × 5
   // -------------------------------------------------
 
   let additionalDiscount = 0;
@@ -2291,9 +2992,7 @@ const calculateLumpSumDetails = async (
 
   // -------------------------------------------------
   // SIBLING
-  //
   // Already gets 20% discount.
-  // No additional Lump Sum discount.
   // -------------------------------------------------
 
   if (
@@ -2317,38 +3016,6 @@ const calculateLumpSumDetails = async (
   // Final Lump Sum Amount
   // -------------------------------------------------
 
-  console.log("========== LUMP SUM FINAL DEBUG ==========");
-
-  console.log("Normal Monthly Fee:", normalMonthlyFee);
-  console.log("Monthly Paid:", monthlyPaid);
-  console.log("Already Paid Months:", alreadyPaidMonths);
-  console.log("Total Academic Months:", totalAcademicMonths);
-  console.log("Remaining Months:", remainingMonths);
-
-  console.log(
-    "Remaining Monthly Amount:",
-    remainingMonthlyAmount
-  );
-
-  console.log(
-    "Remaining One Time Fees:",
-    remainingOneTimeFees
-  );
-
-  console.log(
-    "Additional Discount:",
-    additionalDiscount
-  );
-
-  console.log(
-    "Discounted Monthly Amount:",
-    discountedMonthlyAmount
-  );
-
-
-
-  console.log("==========================================");
-
   const lumpSumAmount =
     Number(
       Math.max(
@@ -2357,12 +3024,6 @@ const calculateLumpSumDetails = async (
         0
       ).toFixed(2)
     );
-
-
-  console.log(
-    "FINAL LUMP SUM:",
-    lumpSumAmount
-  );
 
   // -------------------------------------------------
   // Discount Percentage
@@ -2373,10 +3034,6 @@ const calculateLumpSumDetails = async (
       discountType === "GIRL"
       ? 10
       : 0;
-
-  // -------------------------------------------------
-  // Response
-  // -------------------------------------------------
 
   return {
     eligible: true,
@@ -2400,6 +3057,8 @@ const calculateLumpSumDetails = async (
 
     normalMonthlyFee,
 
+    monthlyFeeSchedule,
+
     remainingMonthlyAmount,
 
     remainingOneTimeFees,
@@ -2413,6 +3072,7 @@ const calculateLumpSumDetails = async (
     lumpSumAmount,
   };
 };
+
 // =====================================================
 // Validate Lump Sum Payment
 // =====================================================
@@ -2570,7 +3230,6 @@ const buildFeePaymentData = ({
 // Update Student After Payment
 // =====================================================
 
-
 const updateStudentAfterPayment = async (
   student,
   paymentAmount,
@@ -2634,16 +3293,8 @@ const updateStudentAfterPayment = async (
       dueFee: 0,
     };
 
-    // ==============================================
-    // Lump Sum Flags
-    // ==============================================
-
     updateData.lumpSumPaid =
       true;
-
-    // ==============================================
-    // Preserve Lump Sum Details
-    // ==============================================
 
     if (
       lumpSumDetails
@@ -2693,7 +3344,8 @@ const updateStudentAfterPayment = async (
       ) {
         updateData.lumpSumDiscountPercent =
           Number(
-            lumpSumDetails.monthlyDiscountPercentage
+            lumpSumDetails
+              .monthlyDiscountPercentage
           );
       }
 
@@ -2703,14 +3355,11 @@ const updateStudentAfterPayment = async (
       ) {
         updateData.lumpSumDiscountAmount =
           Number(
-            lumpSumDetails.additionalDiscount
+            lumpSumDetails
+              .additionalDiscount
           );
       }
     }
-
-    // ==============================================
-    // Update Student
-    // ==============================================
 
     const updatedStudent =
       await studentRepository.updateFee(
@@ -2728,10 +3377,12 @@ const updateStudentAfterPayment = async (
             updateData.lumpSumDiscountType,
 
           lumpSumDiscountPercent:
-            updateData.lumpSumDiscountPercent,
+            updateData
+              .lumpSumDiscountPercent,
 
           lumpSumDiscountAmount:
-            updateData.lumpSumDiscountAmount,
+            updateData
+              .lumpSumDiscountAmount,
         }
       );
 
@@ -2751,10 +3402,6 @@ const updateStudentAfterPayment = async (
   // =====================================================
 
   let newDueFee;
-
-  // =====================================================
-  // ALL / MULTIPLE FEE HEAD PAYMENT
-  // =====================================================
 
   if (
     feeBreakdown &&
@@ -2776,10 +3423,6 @@ const updateStudentAfterPayment = async (
         0
       );
 
-    // ==============================================
-    // Validate Breakdown
-    // ==============================================
-
     if (
       Math.abs(
         breakdownTotal -
@@ -2791,36 +3434,22 @@ const updateStudentAfterPayment = async (
       );
     }
 
-    // ==============================================
-    // Current Due
-    // ==============================================
-
     newDueFee =
       Math.max(
         Number(
           currentDueFee || 0
-        ) -
-        amount,
+        ),
         0
       );
   } else {
-    // =================================================
-    // SINGLE FEE HEAD PAYMENT
-    // =================================================
-
     newDueFee =
       Math.max(
         Number(
           currentDueFee || 0
-        ) -
-        amount,
+        ),
         0
       );
   }
-
-  // =====================================================
-  // Update Data
-  // =====================================================
 
   const updateData = {
     paidFee:
@@ -2833,10 +3462,6 @@ const updateStudentAfterPayment = async (
         newDueFee.toFixed(2)
       ),
   };
-
-  // =====================================================
-  // Update Student
-  // =====================================================
 
   const updatedStudent =
     await studentRepository.updateFee(
@@ -2858,11 +3483,6 @@ const updateStudentAfterPayment = async (
 };
 
 
-
-// =====================================================
-// Collect CASH Fee
-// =====================================================
-
 const collectFee = async (
   body,
   userId
@@ -2883,13 +3503,11 @@ const collectFee = async (
   // Fee Head
   // ===================================================
 
-  if (
-  feeHead !== "All"
-) {
-  validateFeeHead(
-    feeHead
-  );
-}
+  const finalFeeHead =
+    validateFeeHead(
+      feeHead
+    );
+
   // ===================================================
   // CASH Only
   // ===================================================
@@ -2934,168 +3552,205 @@ const collectFee = async (
   // Current Due
   // ===================================================
 
- // ===================================================
-// Current Total Due
-// ===================================================
+  // ===================================================
+  // Current Total Due
+  // ===================================================
 
-const currentDueFee =
-  Number(
-    student.dueFee || 0
-  );
+  const currentFeeCalculation =
+    await calculateFeeByHead({
+      studentId:
+        student.studentId,
+      feeHead:
+        "ALL",
+    });
 
-// ===================================================
-// Regular Payment
-// ===================================================
+  const currentDueFee =
+    Number(
+      currentFeeCalculation.dueFee || 0
+    );
 
-if (
-  finalPaymentType === "REGULAR"
-) {
-
-  // =================================================
-  // SINGLE FEE HEAD PAYMENT
-  // =================================================
+  // ===================================================
+  // Regular Payment
+  // ===================================================
 
   if (
-    feeHead !== "All"
+    finalPaymentType === "REGULAR"
   ) {
-    const paid =
-      await getPaidFeeHeadAmounts(
-        student
-      );
-
-    let headDue = 0;
-
-    // ===============================================
-    // MONTHLY
-    // ===============================================
-
-    if (
-      feeHead === "MONTHLY"
-    ) {
-      const feeStartDate =
-        student.feeStartDate ||
-        (
-          student.admissionDate
-            ? new Date(
-                new Date(
-                  student.admissionDate
-                ).getFullYear(),
-                new Date(
-                  student.admissionDate
-                ).getMonth() + 1,
-                1
-              )
-            : null
-        );
-
-      let accruedMonthlyFee = 0;
-
-      if (feeStartDate) {
-        const startDate =
-          new Date(
-            feeStartDate
+    const headDue =
+      finalFeeHead === "ALL"
+        ? currentDueFee
+        : finalFeeHead === "MONTHLY"
+          ? Number(
+            currentFeeCalculation
+              .dueBreakdown
+              ?.MONTHLY || 0
+          ) +
+            Number(
+              currentFeeCalculation
+                .dueBreakdown
+                ?.LATE_FEE || 0
+            )
+          : Number(
+            currentFeeCalculation
+              .dueBreakdown
+              ?.[finalFeeHead] || 0
           );
-
-        const today =
-          new Date();
-
-        startDate.setHours(
-          0,
-          0,
-          0,
-          0
-        );
-
-        today.setHours(
-          0,
-          0,
-          0,
-          0
-        );
-
-        if (
-          today >= startDate
-        ) {
-          const months =
-            (
-              today.getFullYear() -
-              startDate.getFullYear()
-            ) *
-              12 +
-            (
-              today.getMonth() -
-              startDate.getMonth()
-            ) +
-            1;
-
-          const monthlyFee =
-            getNormalMonthlyFee(
-              student
-            );
-
-          accruedMonthlyFee =
-            monthlyFee * months;
-        }
-      }
-
-      const monthlyPaid =
-        Number(
-          paid.MONTHLY || 0
-        );
-
-      headDue =
-        Math.max(
-          accruedMonthlyFee -
-            monthlyPaid,
-          0
-        );
-    }
-
-    // ===============================================
-    // ONE-TIME FEE HEAD
-    // ===============================================
-
-    else {
-      const effectiveAmount =
-        getEffectiveFeeHeadAmount(
-          student,
-          feeHead
-        );
-
-      const alreadyPaid =
-        Number(
-          paid[feeHead] || 0
-        );
-
-      headDue =
-        Math.max(
-          effectiveAmount -
-            alreadyPaid,
-          0
-        );
-    }
-
-    // ===============================================
-    // Validate Head Due
-    // ===============================================
 
     validateDueAmount(
       paymentAmount,
       headDue
     );
-  }
 
-  // =================================================
-  // ALL PAYMENT
-  // =================================================
+    // Legacy per-head calculation below is retained only
+    // for reference and must not run.
+    if (false) {
 
-  else {
-    validateDueAmount(
-      paymentAmount,
-      currentDueFee
-    );
+      // =================================================
+      // SINGLE FEE HEAD PAYMENT
+      // =================================================
+
+      if (
+        finalFeeHead !== "ALL"
+      ) {
+        const paid =
+          await getPaidFeeHeadAmounts(
+            student
+          );
+
+        let headDue = 0;
+
+        // ===============================================
+        // MONTHLY
+        // ===============================================
+
+        if (
+          finalFeeHead === "MONTHLY"
+        ) {
+          const feeStartDate =
+            student.feeStartDate ||
+            (
+              student.admissionDate
+                ? new Date(
+                  new Date(
+                    student.admissionDate
+                  ).getFullYear(),
+                  new Date(
+                    student.admissionDate
+                  ).getMonth() + 1,
+                  1
+                )
+                : null
+            );
+
+          let accruedMonthlyFee = 0;
+
+          if (feeStartDate) {
+            const startDate =
+              new Date(
+                feeStartDate
+              );
+
+            const today =
+              new Date();
+
+            startDate.setHours(
+              0,
+              0,
+              0,
+              0
+            );
+
+            today.setHours(
+              0,
+              0,
+              0,
+              0
+            );
+
+            if (
+              today >= startDate
+            ) {
+              const months =
+                (
+                  today.getFullYear() -
+                  startDate.getFullYear()
+                ) *
+                  12 +
+                (
+                  today.getMonth() -
+                  startDate.getMonth()
+                ) +
+                1;
+
+              const monthlyFee =
+                getNormalMonthlyFee(
+                  student
+                );
+
+              accruedMonthlyFee =
+                monthlyFee * months;
+            }
+          }
+
+          const monthlyPaid =
+            Number(
+              paid.MONTHLY || 0
+            );
+
+          headDue =
+            Math.max(
+              accruedMonthlyFee -
+                monthlyPaid,
+              0
+            );
+        }
+
+        // ===============================================
+        // ONE-TIME FEE HEAD
+        // ===============================================
+
+        else {
+          const effectiveAmount =
+            getEffectiveFeeHeadAmount(
+              student,
+              finalFeeHead
+            );
+
+          const alreadyPaid =
+            Number(
+              paid[finalFeeHead] || 0
+            );
+
+          headDue =
+            Math.max(
+              effectiveAmount -
+                alreadyPaid,
+              0
+            );
+        }
+
+        // ===============================================
+        // Validate Head Due
+        // ===============================================
+
+        validateDueAmount(
+          paymentAmount,
+          headDue
+        );
+      }
+
+      // =================================================
+      // ALL PAYMENT
+      // =================================================
+
+      else {
+        validateDueAmount(
+          paymentAmount,
+          currentDueFee
+        );
+      }
+    }
   }
-}
 
   // ===================================================
   // RTE Protection
@@ -3158,6 +3813,8 @@ if (
     FUNCTION: 0,
     SMART_CLASS: 0,
     OTHER: 0,
+    LATE_FEE: 0,
+    OPENING_DUE: 0,
   };
 
   // ===================================================
@@ -3165,7 +3822,7 @@ if (
   // ===================================================
 
   if (
-    feeHead === "All"
+    finalFeeHead === "ALL"
   ) {
     // ===============================================
     // feeBreakdown Required
@@ -3190,6 +3847,8 @@ if (
       "FUNCTION",
       "SMART_CLASS",
       "OTHER",
+      "LATE_FEE",
+      "OPENING_DUE",
     ];
 
     let breakdownTotal = 0;
@@ -3221,6 +3880,24 @@ if (
       ) {
         throw new Error(
           `${head} fee amount cannot be negative`
+        );
+      }
+
+      const availableDue =
+        Number(
+          currentFeeCalculation
+            .dueBreakdown
+            ?.[head] || 0
+        );
+
+      if (
+        finalPaymentType ===
+          "REGULAR" &&
+        headAmount >
+          availableDue + 0.01
+      ) {
+        throw new Error(
+          `${head} amount cannot be greater than due amount â‚¹${availableDue}`
         );
       }
 
@@ -3257,7 +3934,7 @@ if (
       finalPaymentAmount
     ) {
       throw new Error(
-        `Fee breakdown total ₹${breakdownTotal} must equal payment amount ₹${finalPaymentAmount}`
+        `Fee breakdown total â‚¹${breakdownTotal} must equal payment amount â‚¹${finalPaymentAmount}`
       );
     }
   } else {
@@ -3268,7 +3945,7 @@ if (
     if (
       !Object.prototype.hasOwnProperty.call(
         normalizedFeeBreakdown,
-        feeHead
+        finalFeeHead
       )
     ) {
       throw new Error(
@@ -3276,11 +3953,46 @@ if (
       );
     }
 
-    normalizedFeeBreakdown[
-      feeHead
-    ] = Number(
-      paymentAmount.toFixed(2)
-    );
+    if (
+      finalFeeHead ===
+      "MONTHLY"
+    ) {
+      const monthlyDue =
+        Number(
+          currentFeeCalculation
+            .dueBreakdown
+            ?.MONTHLY || 0
+        );
+
+      const monthlyPart =
+        Math.min(
+          paymentAmount,
+          monthlyDue
+        );
+
+      const lateFeePart =
+        Math.max(
+          paymentAmount -
+            monthlyPart,
+          0
+        );
+
+      normalizedFeeBreakdown.MONTHLY =
+        Number(
+          monthlyPart.toFixed(2)
+        );
+
+      normalizedFeeBreakdown.LATE_FEE =
+        Number(
+          lateFeePart.toFixed(2)
+        );
+    } else {
+      normalizedFeeBreakdown[
+        finalFeeHead
+      ] = Number(
+        paymentAmount.toFixed(2)
+      );
+    }
   }
 
   // ===================================================
@@ -3288,10 +4000,21 @@ if (
   // ===================================================
 
   const effectiveFeeHeadAmount =
-    getEffectiveFeeHeadAmount(
-      student,
-      feeHead
-    );
+    finalFeeHead === "ALL"
+      ? paymentAmount
+      : finalFeeHead ===
+          "LATE_FEE"
+        ? currentFeeCalculation
+          .payableLateFee
+        : finalFeeHead ===
+            "OPENING_DUE"
+          ? Number(
+            student.openingDue || 0
+          )
+          : getEffectiveFeeHeadAmount(
+            student,
+            finalFeeHead
+          );
 
   // ===================================================
   // Receipt
@@ -3326,7 +4049,8 @@ if (
 
       student,
 
-      feeHead,
+      feeHead:
+        finalFeeHead,
 
       amount:
         paymentAmount,
@@ -3361,6 +4085,17 @@ if (
       feeData
     );
 
+  const postPaymentCalculation =
+    finalPaymentType ===
+      "REGULAR"
+      ? await calculateFeeByHead({
+        studentId:
+          student.studentId,
+        feeHead:
+          "ALL",
+      })
+      : null;
+
   // ===================================================
   // Update Student
   // ===================================================
@@ -3370,7 +4105,10 @@ if (
       student,
       paymentAmount,
       finalPaymentType,
-      currentDueFee
+      postPaymentCalculation
+        ?.dueFee || 0,
+      lumpSumDetails,
+      normalizedFeeBreakdown
     );
 
   // ===================================================
@@ -3396,7 +4134,8 @@ if (
       feeDiscountType:
         updatedStudent.feeDiscountType,
 
-      feeHead,
+      feeHead:
+        finalFeeHead,
 
       effectiveFeeHeadAmount,
 
@@ -3416,6 +4155,580 @@ if (
 };
 
 
+const waiveLateFee = async (
+  body = {},
+  userId
+) => {
+  const studentId =
+    String(
+      body.studentId || ""
+    ).trim();
+
+  const month =
+    String(
+      body.month || ""
+    ).trim();
+
+  const reason =
+    String(
+      body.reason || ""
+    ).trim();
+
+  const waiverType =
+    String(
+      body.waiverType ||
+        "AMOUNT"
+    )
+      .trim()
+      .toUpperCase();
+
+  // ===============================================
+  // Basic Validation
+  // ===============================================
+
+  if (!studentId) {
+    throw new Error(
+      "Student ID is required"
+    );
+  }
+
+  if (
+    !/^\d{4}-(0[1-9]|1[0-2])$/.test(
+      month
+    )
+  ) {
+    throw new Error(
+      "Month must be in YYYY-MM format"
+    );
+  }
+
+  if (!reason) {
+    throw new Error(
+      "Waiver reason is required"
+    );
+  }
+
+  if (!userId) {
+    throw new Error(
+      "Waiving user is required"
+    );
+  }
+
+  const allowedWaiverTypes = [
+    "FULL",
+    "AMOUNT",
+    "PERCENTAGE",
+  ];
+
+  if (
+    !allowedWaiverTypes.includes(
+      waiverType
+    )
+  ) {
+    throw new Error(
+      "Invalid waiver type"
+    );
+  }
+
+  // ===============================================
+  // Get Student
+  // ===============================================
+
+  const student =
+    await studentRepository.findByStudentId(
+      studentId
+    );
+
+  if (!student) {
+    throw new Error(
+      "Student not found"
+    );
+  }
+
+  if (
+    student.status !== "ACTIVE"
+  ) {
+    throw new Error(
+      "Student is not active"
+    );
+  }
+
+  if (
+    student.feeDiscountType === "RTE"
+  ) {
+    throw new Error(
+      "RTE student has no late fee"
+    );
+  }
+
+  // ===============================================
+  // Current Fee Calculation
+  // ===============================================
+
+  const currentCalculation =
+    await calculateFeeByHead({
+      studentId,
+      feeHead: "ALL",
+    });
+
+  const lateFeeDetails =
+    Array.isArray(
+      currentCalculation.lateFeeDetails
+    )
+      ? currentCalculation.lateFeeDetails
+      : Array.isArray(
+          currentCalculation.monthWiseLateFee
+        )
+      ? currentCalculation.monthWiseLateFee
+      : [];
+
+  const monthDetail =
+    lateFeeDetails.find(
+      (item) =>
+        item.month === month
+    );
+
+  if (!monthDetail) {
+    throw new Error(
+      "Late fee month not found"
+    );
+  }
+
+  const originalLateFee =
+    Math.max(
+      Number(
+        monthDetail.lateFee || 0
+      ),
+      0
+    );
+
+  const lateFeePaid =
+    Math.max(
+      Number(
+        monthDetail.lateFeePaid || 0
+      ),
+      0
+    );
+
+  if (
+    originalLateFee <= 0
+  ) {
+    throw new Error(
+      "No late fee exists for this month"
+    );
+  }
+
+  // à¤œà¤¿à¤¸ à¤®à¤¹à¥€à¤¨à¥‡ late fee pay à¤¹à¥à¤ˆ à¤¹à¥ˆ,
+  // à¤‰à¤¸ à¤®à¤¹à¥€à¤¨à¥‡ waiver à¤¬à¤¿à¤²à¥à¤•à¥à¤² à¤¨à¤¹à¥€à¤‚ à¤¹à¥‹à¤—à¤¾
+  if (
+    lateFeePaid > 0
+  ) {
+    throw new Error(
+      "Paid late fee cannot be waived"
+    );
+  }
+
+  const maximumWaivableAmount =
+    Number(
+      Math.max(
+        originalLateFee -
+          lateFeePaid,
+        0
+      ).toFixed(2)
+    );
+
+  // ===============================================
+  // Calculate Waiver Amount
+  // ===============================================
+
+  let finalWaivedAmount = 0;
+  let waiverValue = null;
+
+  if (
+    waiverType === "FULL"
+  ) {
+    waiverValue = 100;
+
+    finalWaivedAmount =
+      maximumWaivableAmount;
+  }
+
+  if (
+    waiverType === "AMOUNT"
+  ) {
+    waiverValue =
+      Number(
+        body.waiverValue ??
+          body.waivedAmount
+      );
+
+    if (
+      !Number.isFinite(
+        waiverValue
+      ) ||
+      waiverValue <= 0
+    ) {
+      throw new Error(
+        "Valid waived amount is required"
+      );
+    }
+
+    if (
+      waiverValue >
+      maximumWaivableAmount
+    ) {
+      throw new Error(
+        `Waived amount cannot exceed ${maximumWaivableAmount}`
+      );
+    }
+
+    finalWaivedAmount =
+      waiverValue;
+  }
+
+  if (
+    waiverType ===
+    "PERCENTAGE"
+  ) {
+    waiverValue =
+      Number(
+        body.waiverValue ??
+          body.percentage
+      );
+
+    if (
+      !Number.isFinite(
+        waiverValue
+      ) ||
+      waiverValue <= 0 ||
+      waiverValue > 100
+    ) {
+      throw new Error(
+        "Waiver percentage must be between 1 and 100"
+      );
+    }
+
+    finalWaivedAmount =
+      maximumWaivableAmount *
+      (
+        waiverValue / 100
+      );
+  }
+
+  finalWaivedAmount =
+    Number(
+      finalWaivedAmount.toFixed(2)
+    );
+
+  // ===============================================
+  // Existing Waivers
+  // ===============================================
+
+  const updatedWaivers =
+    Array.isArray(
+      student.lateFeeWaivers
+    )
+      ? student.lateFeeWaivers.map(
+          (waiver) =>
+            typeof waiver.toObject ===
+            "function"
+              ? waiver.toObject()
+              : { ...waiver }
+        )
+      : [];
+
+  const existingIndex =
+    updatedWaivers.findIndex(
+      (waiver) =>
+        waiver.month === month
+    );
+
+  const waiverData = {
+    month,
+
+    waivedAmount:
+      finalWaivedAmount,
+
+    reason,
+
+    waivedBy:
+      userId,
+
+    waivedAt:
+      new Date(),
+  };
+
+  // Same month à¤•à¥€ waiver update à¤•à¤°à¥‡à¤‚,
+  // duplicate entry à¤¨à¤¹à¥€à¤‚ à¤¬à¤¨à¤¾à¤à¤
+  if (
+    existingIndex >= 0
+  ) {
+    updatedWaivers[
+      existingIndex
+    ] = {
+      ...updatedWaivers[
+        existingIndex
+      ],
+
+      ...waiverData,
+    };
+  } else {
+    updatedWaivers.push(
+      waiverData
+    );
+  }
+
+  // ===============================================
+  // Save Waiver
+  // ===============================================
+
+  const updatedStudent =
+    await studentRepository.updateStudent(
+      student._id,
+      {
+        lateFeeWaivers:
+          updatedWaivers,
+
+        updatedBy:
+          userId,
+      }
+    );
+
+  if (!updatedStudent) {
+    throw new Error(
+      "Late fee waiver failed"
+    );
+  }
+
+  // ===============================================
+  // Updated Fee Calculation
+  // ===============================================
+
+  const updatedCalculation =
+    await calculateFeeByHead({
+      studentId,
+      feeHead: "ALL",
+    });
+
+  const updatedDetails =
+    Array.isArray(
+      updatedCalculation.lateFeeDetails
+    )
+      ? updatedCalculation.lateFeeDetails
+      : Array.isArray(
+          updatedCalculation.monthWiseLateFee
+        )
+      ? updatedCalculation.monthWiseLateFee
+      : [];
+
+  const updatedMonthDetail =
+    updatedDetails.find(
+      (item) =>
+        item.month === month
+    );
+
+  // ===============================================
+  // Response
+  // ===============================================
+
+  return {
+    studentId,
+
+    month,
+
+    waiverType,
+
+    waiverValue,
+
+    reason,
+
+    lateFee:
+      Number(
+        updatedMonthDetail
+          ?.lateFee ||
+          originalLateFee
+      ),
+
+    lateFeePaid:
+      Number(
+        updatedMonthDetail
+          ?.lateFeePaid || 0
+      ),
+
+    waivedAmount:
+      Number(
+        updatedMonthDetail
+          ?.waivedAmount ??
+          finalWaivedAmount
+      ),
+
+    payableLateFee:
+      Number(
+        updatedMonthDetail
+          ?.payableLateFee || 0
+      ),
+
+    totalLateFee:
+      Number(
+        updatedCalculation
+          .lateFee || 0
+      ),
+
+    totalLateFeeWaived:
+      Number(
+        updatedCalculation
+          .lateFeeWaived || 0
+      ),
+
+    totalPayableLateFee:
+      Number(
+        updatedCalculation
+          .payableLateFee || 0
+      ),
+
+    dueFee:
+      Number(
+        updatedCalculation
+          .dueFee || 0
+      ),
+
+    lateFeeDetails:
+      updatedDetails,
+  };
+};
+
+
+
+const revokeLateFeeWaiver = async (
+  studentId,
+  month,
+  userId
+) => {
+  studentId = String(studentId || "").trim();
+  month = String(month || "").trim();
+
+  if (!studentId) {
+    throw new Error("Student ID is required");
+  }
+
+  if (
+    !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)
+  ) {
+    throw new Error(
+      "Month must be in YYYY-MM format"
+    );
+  }
+
+  const student =
+    await studentRepository.findByStudentId(
+      studentId
+    );
+
+  if (!student) {
+    throw new Error("Student not found");
+  }
+
+  const currentWaivers =
+    Array.isArray(student.lateFeeWaivers)
+      ? student.lateFeeWaivers
+      : [];
+
+  const existingWaiver =
+    currentWaivers.find(
+      (waiver) => waiver.month === month
+    );
+
+  if (!existingWaiver) {
+    throw new Error(
+      "Late fee waiver not found for this month"
+    );
+  }
+
+  const revokedAmount =
+    Number(
+      existingWaiver.waivedAmount || 0
+    );
+
+  // Selected month à¤•à¥€ waiver à¤¹à¤Ÿà¤¾à¤à¤
+  const updatedWaivers =
+    currentWaivers
+      .filter(
+        (waiver) =>
+          waiver.month !== month
+      )
+      .map((waiver) =>
+        typeof waiver.toObject === "function"
+          ? waiver.toObject()
+          : { ...waiver }
+      );
+
+  const updatedStudent =
+    await studentRepository.updateStudent(
+      student._id,
+      {
+        lateFeeWaivers: updatedWaivers,
+        updatedBy: userId,
+      }
+    );
+
+  if (!updatedStudent) {
+    throw new Error(
+      "Late fee waiver revoke failed"
+    );
+  }
+
+  // Revoke à¤•à¥‡ à¤¬à¤¾à¤¦ fresh calculation
+  const updatedCalculation =
+    await calculateFeeByHead({
+      studentId,
+      feeHead: "ALL",
+    });
+
+  const lateFeeDetails =
+    Array.isArray(
+      updatedCalculation.lateFeeDetails
+    )
+      ? updatedCalculation.lateFeeDetails
+      : [];
+
+  const updatedMonthDetail =
+    lateFeeDetails.find(
+      (item) => item.month === month
+    );
+
+  return {
+    studentId,
+    month,
+    revokedAmount,
+
+    waivedAmount:
+      Number(
+        updatedMonthDetail?.waivedAmount || 0
+      ),
+
+    payableLateFee:
+      Number(
+        updatedMonthDetail?.payableLateFee || 0
+      ),
+
+    totalLateFeeWaived:
+      Number(
+        updatedCalculation.lateFeeWaived || 0
+      ),
+
+    totalPayableLateFee:
+      Number(
+        updatedCalculation.payableLateFee || 0
+      ),
+
+    dueFee:
+      Number(
+        updatedCalculation.dueFee || 0
+      ),
+
+    lateFeeDetails,
+  };
+};
 
 // =====================================================
 // Create Online QR
@@ -3431,27 +4744,17 @@ const createOnlineQR = async (
     amount,
     paymentType,
     isLumpSum,
+    feeBreakdown,
   } = body;
 
   // ===================================================
-  // Fee Head
+  // Fee Head Validation
   // ===================================================
 
-  // validateFeeHead(
-  //   feeHead
-  // );
-
-  // ===================================================
-// Fee Head Validation
-// ===================================================
-
-if (
-  feeHead !== "All"
-) {
-  validateFeeHead(
-    feeHead
-  );
-}
+  const finalFeeHead =
+    validateFeeHead(
+      feeHead
+    );
 
   // ===================================================
   // Student
@@ -3485,9 +4788,19 @@ if (
   // Current Due
   // ===================================================
 
+  const currentFeeCalculation =
+    await calculateFeeByHead({
+      studentId:
+        student.studentId,
+
+      feeHead:
+        "ALL",
+    });
+
   const currentDueFee =
     Number(
-      student.dueFee || 0
+      currentFeeCalculation
+        .dueFee || 0
     );
 
   // ===================================================
@@ -3498,9 +4811,30 @@ if (
     finalPaymentType ===
     "REGULAR"
   ) {
+    const headDue =
+      finalFeeHead === "ALL"
+        ? currentDueFee
+        : finalFeeHead ===
+            "MONTHLY"
+          ? Number(
+            currentFeeCalculation
+              .dueBreakdown
+              ?.MONTHLY || 0
+          ) +
+            Number(
+              currentFeeCalculation
+                .dueBreakdown
+                ?.LATE_FEE || 0
+            )
+          : Number(
+            currentFeeCalculation
+              .dueBreakdown
+              ?.[finalFeeHead] || 0
+          );
+
     validateDueAmount(
       paymentAmount,
-      currentDueFee
+      headDue
     );
   }
 
@@ -3513,29 +4847,196 @@ if (
     currentDueFee
   );
 
-
   // ===================================================
   // Lump Sum
   // ===================================================
 
-  let lumpSumDetails = null;
+  let lumpSumDetails =
+    null;
 
   if (
     finalPaymentType ===
     "LUMP_SUM"
   ) {
     if (
-      finalPaymentType ===
-      "LUMP_SUM"
+      student.lumpSumPaid ===
+      true
     ) {
-      lumpSumDetails =
-        await validateLumpSumPayment(
-          student,
-          paymentAmount
+      const error =
+        new Error(
+          "Lump Sum payment has already been paid for this student"
         );
+
+      error.statusCode = 400;
+
+      throw error;
     }
 
+    lumpSumDetails =
+      await validateLumpSumPayment(
+        student,
+        paymentAmount
+      );
+  }
 
+  // ===================================================
+  // Fee Breakdown
+  // ===================================================
+
+  const normalizedFeeBreakdown = {
+    MONTHLY: 0,
+    ADMISSION: 0,
+    EXAM: 0,
+    SPORT: 0,
+    COMPUTER: 0,
+    FUNCTION: 0,
+    SMART_CLASS: 0,
+    OTHER: 0,
+    LATE_FEE: 0,
+    OPENING_DUE: 0,
+  };
+
+  // ===================================================
+  // ALL Fee Payment
+  // ===================================================
+
+  if (
+    finalFeeHead === "ALL"
+  ) {
+    if (
+      !feeBreakdown ||
+      typeof feeBreakdown !==
+        "object"
+    ) {
+      throw new Error(
+        "feeBreakdown is required when feeHead is All"
+      );
+    }
+
+    let breakdownTotal = 0;
+
+    for (
+      const head of Object.keys(
+        normalizedFeeBreakdown
+      )
+    ) {
+      const headAmount =
+        Number(
+          feeBreakdown[head] || 0
+        );
+
+      if (
+        !Number.isFinite(
+          headAmount
+        ) ||
+        headAmount < 0
+      ) {
+        throw new Error(
+          `${head} fee amount must be a valid non-negative number`
+        );
+      }
+
+      const availableDue =
+        Number(
+          currentFeeCalculation
+            .dueBreakdown
+            ?.[head] || 0
+        );
+
+      if (
+        finalPaymentType ===
+          "REGULAR" &&
+        headAmount >
+          availableDue + 0.01
+      ) {
+        throw new Error(
+          `${head} amount cannot be greater than due amount â‚¹${availableDue}`
+        );
+      }
+
+      normalizedFeeBreakdown[
+        head
+      ] = Number(
+        headAmount.toFixed(2)
+      );
+
+      breakdownTotal +=
+        headAmount;
+    }
+
+    breakdownTotal =
+      Number(
+        breakdownTotal.toFixed(2)
+      );
+
+    const finalPaymentAmount =
+      Number(
+        paymentAmount.toFixed(2)
+      );
+
+    if (
+      breakdownTotal !==
+      finalPaymentAmount
+    ) {
+      throw new Error(
+        `Fee breakdown total â‚¹${breakdownTotal} must equal payment amount â‚¹${finalPaymentAmount}`
+      );
+    }
+  }
+
+  // ===================================================
+  // Single Fee Head Payment
+  // ===================================================
+
+  else if (
+    finalFeeHead === "MONTHLY"
+  ) {
+    const monthlyDue =
+      Number(
+        currentFeeCalculation
+          .dueBreakdown
+          ?.MONTHLY || 0
+      );
+
+    const monthlyPart =
+      Math.min(
+        paymentAmount,
+        monthlyDue
+      );
+
+    normalizedFeeBreakdown
+      .MONTHLY =
+      Number(
+        monthlyPart.toFixed(2)
+      );
+
+    normalizedFeeBreakdown
+      .LATE_FEE =
+      Number(
+        Math.max(
+          paymentAmount -
+            monthlyPart,
+          0
+        ).toFixed(2)
+      );
+  } else {
+    if (
+      !Object.prototype
+        .hasOwnProperty.call(
+          normalizedFeeBreakdown,
+          finalFeeHead
+        )
+    ) {
+      throw new Error(
+        "Invalid fee head"
+      );
+    }
+
+    normalizedFeeBreakdown[
+      finalFeeHead
+    ] = Number(
+      paymentAmount.toFixed(2)
+    );
   }
 
   // ===================================================
@@ -3543,10 +5044,21 @@ if (
   // ===================================================
 
   const effectiveFeeHeadAmount =
-    getEffectiveFeeHeadAmount(
-      student,
-      feeHead
-    );
+    finalFeeHead === "ALL"
+      ? paymentAmount
+      : finalFeeHead ===
+          "LATE_FEE"
+        ? currentFeeCalculation
+          .payableLateFee
+        : finalFeeHead ===
+            "OPENING_DUE"
+          ? Number(
+            student.openingDue || 0
+          )
+          : getEffectiveFeeHeadAmount(
+            student,
+            finalFeeHead
+          );
 
   // ===================================================
   // Razorpay Amount
@@ -3560,17 +5072,6 @@ if (
   // ===================================================
   // Create Razorpay QR
   // ===================================================
-
-  console.log("RAZORPAY KEY:", process.env.RAZORPAY_KEY_ID);
-  console.log(
-    "RAZORPAY SECRET EXISTS:",
-    !!process.env.RAZORPAY_KEY_SECRET
-  );
-
-  console.log(
-    "QR CODE OBJECT:",
-    razorpay.qrCode
-  );
 
   const qr =
     await razorpay.qrCode.create({
@@ -3593,7 +5094,7 @@ if (
         finalPaymentType ===
           "LUMP_SUM"
           ? `Lump Sum School Fee Payment - ${student.studentId}`
-          : `${feeHead} Fee Payment - ${student.studentId}`,
+          : `${finalFeeHead} Fee Payment - ${student.studentId}`,
 
       notes: {
         studentId:
@@ -3602,7 +5103,10 @@ if (
         studentMongoId:
           student._id.toString(),
 
-        feeHead,
+        feeHead:
+          finalFeeHead,
+
+        effectiveFeeHeadAmount,
 
         feeDiscountType:
           student.feeDiscountType ||
@@ -3612,15 +5116,6 @@ if (
           finalPaymentType,
       },
     });
-
-  // const qr = await razorpay.qrCode.create({
-  //   type: "upi_qr",
-  //   name: `School Fee ${student.studentId}`,
-  //   usage: "single_use",
-  //   fixed_amount: true,
-  //   payment_amount: razorpayAmount,
-  //   description: `School Fee Payment - ${student.studentId}`,
-  // });
 
   // ===================================================
   // Save Pending Payment
@@ -3638,7 +5133,11 @@ if (
         studentId:
           student.studentId,
 
-        feeHead,
+        feeHead:
+          finalFeeHead,
+
+        feeBreakdown:
+          normalizedFeeBreakdown,
 
         amount:
           paymentAmount,
@@ -3668,7 +5167,7 @@ if (
       pendingPayment.studentId,
 
     feeHead:
-      pendingPayment.feeHead,
+      finalFeeHead,
 
     amount:
       pendingPayment.amount,
@@ -3691,6 +5190,9 @@ if (
 
     paymentType:
       finalPaymentType,
+
+    feeBreakdown:
+      normalizedFeeBreakdown,
 
     lumpSumDetails:
       finalPaymentType ===
@@ -3900,9 +5402,19 @@ const checkOnlinePayment =
     // Current Due
     // =================================================
 
+    const currentFeeCalculation =
+      await calculateFeeByHead({
+        studentId:
+          student.studentId,
+
+        feeHead:
+          "ALL",
+      });
+
     const currentDueFee =
       Number(
-        student.dueFee || 0
+        currentFeeCalculation
+          .dueFee || 0
       );
 
     if (
@@ -3926,6 +5438,11 @@ const checkOnlinePayment =
         "REGULAR"
       );
 
+    const finalFeeHead =
+      validateFeeHead(
+        pendingPayment.feeHead
+      );
+
     // =================================================
     // Regular Payment
     // =================================================
@@ -3934,9 +5451,30 @@ const checkOnlinePayment =
       finalPaymentType ===
       "REGULAR"
     ) {
+      const headDue =
+        finalFeeHead === "ALL"
+          ? currentDueFee
+          : finalFeeHead ===
+              "MONTHLY"
+            ? Number(
+              currentFeeCalculation
+                .dueBreakdown
+                ?.MONTHLY || 0
+            ) +
+              Number(
+                currentFeeCalculation
+                  .dueBreakdown
+                  ?.LATE_FEE || 0
+              )
+            : Number(
+              currentFeeCalculation
+                .dueBreakdown
+                ?.[finalFeeHead] || 0
+            );
+
       validateDueAmount(
         paidAmount,
-        currentDueFee
+        headDue
       );
     }
 
@@ -3961,10 +5499,14 @@ const checkOnlinePayment =
     ) {
       // If current due is 0,
       // Lump Sum payment is not allowed.
-      if (currentDueFee <= 0) {
-        const error = new Error(
-          "Amount cannot be greater than due fee. Due fee is ₹0"
-        );
+
+      if (
+        currentDueFee <= 0
+      ) {
+        const error =
+          new Error(
+            "Amount cannot be greater than due fee. Due fee is ₹0"
+          );
 
         error.statusCode = 400;
 
@@ -3986,30 +5528,6 @@ const checkOnlinePayment =
       await generateReceiptNo();
 
     // =================================================
-    // Discount Information
-    // =================================================
-
-    const lumpSumDiscountPercent =
-      finalPaymentType ===
-        "LUMP_SUM"
-        ? Number(
-          lumpSumDetails
-            ?.monthlyDiscountPercentage ||
-          0
-        )
-        : 0;
-
-    const lumpSumDiscountAmount =
-      finalPaymentType ===
-        "LUMP_SUM"
-        ? Number(
-          lumpSumDetails
-            ?.additionalDiscount ||
-          0
-        )
-        : 0;
-
-    // =================================================
     // Remarks
     // =================================================
 
@@ -4020,21 +5538,203 @@ const checkOnlinePayment =
         : "Online UPI QR Payment";
 
     // =================================================
+    // Payment Breakdown
+    // =================================================
+
+    const paymentFeeBreakdown = {
+      MONTHLY: 0,
+      ADMISSION: 0,
+      EXAM: 0,
+      SPORT: 0,
+      COMPUTER: 0,
+      FUNCTION: 0,
+      SMART_CLASS: 0,
+      OTHER: 0,
+      LATE_FEE: 0,
+      OPENING_DUE: 0,
+    };
+
+    const savedBreakdown =
+      typeof pendingPayment
+        .feeBreakdown?.toObject ===
+        "function"
+        ? pendingPayment
+          .feeBreakdown.toObject()
+        : pendingPayment
+          .feeBreakdown;
+
+    if (
+      savedBreakdown &&
+      typeof savedBreakdown ===
+        "object"
+    ) {
+      for (
+        const head of Object.keys(
+          paymentFeeBreakdown
+        )
+      ) {
+        const savedAmount =
+          Number(
+            savedBreakdown[head] || 0
+          );
+
+        if (
+          Number.isFinite(
+            savedAmount
+          ) &&
+          savedAmount >= 0
+        ) {
+          paymentFeeBreakdown[
+            head
+          ] = Number(
+            savedAmount.toFixed(2)
+          );
+        }
+      }
+    }
+
+    const savedBreakdownTotal =
+      Object.values(
+        paymentFeeBreakdown
+      ).reduce(
+        (
+          total,
+          value
+        ) =>
+          total +
+          Number(
+            value || 0
+          ),
+        0
+      );
+
+    // Backward compatibility for QR records created
+    // before feeBreakdown was stored.
+
+    if (
+      Math.abs(
+        savedBreakdownTotal -
+          paidAmount
+      ) > 0.01
+    ) {
+      for (
+        const head of Object.keys(
+          paymentFeeBreakdown
+        )
+      ) {
+        paymentFeeBreakdown[
+          head
+        ] = 0;
+      }
+
+      if (
+        finalFeeHead ===
+        "MONTHLY"
+      ) {
+        const monthlyDue =
+          Number(
+            currentFeeCalculation
+              .dueBreakdown
+              ?.MONTHLY || 0
+          );
+
+        const monthlyPart =
+          Math.min(
+            paidAmount,
+            monthlyDue
+          );
+
+        paymentFeeBreakdown
+          .MONTHLY =
+          Number(
+            monthlyPart.toFixed(2)
+          );
+
+        paymentFeeBreakdown
+          .LATE_FEE =
+          Number(
+            Math.max(
+              paidAmount -
+                monthlyPart,
+              0
+            ).toFixed(2)
+          );
+      } else if (
+        finalFeeHead === "ALL"
+      ) {
+        let remainingAmount =
+          paidAmount;
+
+        const allocationOrder = [
+          "OPENING_DUE",
+          "ADMISSION",
+          "EXAM",
+          "SPORT",
+          "COMPUTER",
+          "FUNCTION",
+          "SMART_CLASS",
+          "OTHER",
+          "MONTHLY",
+          "LATE_FEE",
+        ];
+
+        for (
+          const head of allocationOrder
+        ) {
+          if (
+            remainingAmount <= 0
+          ) {
+            break;
+          }
+
+          const headDue =
+            Number(
+              currentFeeCalculation
+                .dueBreakdown
+                ?.[head] || 0
+            );
+
+          const allocatedAmount =
+            Math.min(
+              remainingAmount,
+              headDue
+            );
+
+          paymentFeeBreakdown[
+            head
+          ] = Number(
+            allocatedAmount.toFixed(2)
+          );
+
+          remainingAmount =
+            Number(
+              (
+                remainingAmount -
+                allocatedAmount
+              ).toFixed(2)
+            );
+        }
+      } else {
+        paymentFeeBreakdown[
+          finalFeeHead
+        ] = Number(
+          paidAmount.toFixed(2)
+        );
+      }
+    }
+
+    // =================================================
     // Create Fee
     // =================================================
 
-    const fee =
-      await feeRepository.createFee({
+    const feeData =
+      buildFeePaymentData({
         receiptNo,
 
-        student:
-          student._id,
-
-        studentId:
-          student.studentId,
+        student,
 
         feeHead:
-          pendingPayment.feeHead,
+          finalFeeHead,
 
         amount:
           Number(
@@ -4044,19 +5744,10 @@ const checkOnlinePayment =
         paymentType:
           finalPaymentType,
 
-        feeDiscountType:
-          student.feeDiscountType ||
-          "NONE",
-
-        lumpSumDiscountPercent,
-
-        lumpSumDiscountAmount,
+        lumpSumDetails,
 
         paymentMode:
           "ONLINE",
-
-        paymentStatus:
-          "SUCCESS",
 
         transactionId:
           successfulPayment.id,
@@ -4066,7 +5757,27 @@ const checkOnlinePayment =
 
         collectedBy:
           userId || null,
+
+        feeBreakdown:
+          paymentFeeBreakdown,
       });
+
+    const fee =
+      await feeRepository.createFee(
+        feeData
+      );
+
+    const postPaymentCalculation =
+      finalPaymentType ===
+        "REGULAR"
+        ? await calculateFeeByHead({
+          studentId:
+            student.studentId,
+
+          feeHead:
+            "ALL",
+        })
+        : null;
 
     // =================================================
     // Update Student
@@ -4077,7 +5788,10 @@ const checkOnlinePayment =
         student,
         paidAmount,
         finalPaymentType,
-        currentDueFee
+        postPaymentCalculation
+          ?.dueFee || 0,
+        lumpSumDetails,
+        paymentFeeBreakdown
       );
 
     // =================================================
@@ -4117,7 +5831,7 @@ const checkOnlinePayment =
           updatedStudent.name,
 
         feeHead:
-          pendingPayment.feeHead,
+          finalFeeHead,
 
         paidFee:
           updatedStudent.paidFee,
@@ -4131,6 +5845,9 @@ const checkOnlinePayment =
 
         paymentType:
           finalPaymentType,
+
+        feeBreakdown:
+          paymentFeeBreakdown,
 
         lumpSumDetails:
           finalPaymentType ===
@@ -4188,7 +5905,7 @@ const getFeeHistory =
     if (
       !studentId ||
       typeof studentId !==
-      "string"
+        "string"
     ) {
       throw new Error(
         "Student ID is required"
@@ -4213,7 +5930,7 @@ const getFeeHistory =
       );
   };
 
-// =====================================================
+  // =====================================================
 // Receipt Details
 // =====================================================
 
@@ -4241,8 +5958,6 @@ const getReceipt = async (
   return receipt;
 };
 
-
-
 const getAllFeeHistory = async () => {
   return await feeRepository.getAllFeeHistory();
 };
@@ -4250,9 +5965,6 @@ const getAllFeeHistory = async () => {
 // =====================================================
 // Export
 // =====================================================
-
-
-
 
 module.exports = {
   collectFee,
@@ -4303,4 +6015,7 @@ module.exports = {
   // Fee Calculate API
   // =========================================
   calculateFeeByHead,
+  waiveLateFee,
+  revokeLateFeeWaiver,
 };
+

@@ -1,5 +1,231 @@
 const mongoose = require("mongoose");
 
+const feeSnapshotSchema =
+  new mongoose.Schema(
+    {
+      admissionFee: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      monthlyFee: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      examFee: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      sportFee: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      computerFee: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      functionFee: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      smartClassFee: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      otherCharges: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+    },
+    {
+      _id: false,
+    }
+  );
+
+const classPromotionSchema =
+  new mongoose.Schema(
+    {
+      fromClass: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      toClass: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      fromSection: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      toSection: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      /*
+       * जिस समय promotion student पर
+       * effective हुई।
+       *
+       * Immediate promotion में service
+       * current date भेजेगी।
+       */
+      effectiveFrom: {
+        type: Date,
+        required: true,
+      },
+
+      /*
+       * Current implementation में
+       * promotion तुरंत APPLIED होगी।
+       *
+       * PENDING और CANCELLED future
+       * workflow support के लिए रखे हैं।
+       */
+      status: {
+        type: String,
+        enum: [
+          "PENDING",
+          "APPLIED",
+          "CANCELLED",
+        ],
+        default: "APPLIED",
+        required: true,
+      },
+
+      fromFees: {
+        type: feeSnapshotSchema,
+        required: true,
+      },
+
+      toFees: {
+        type: feeSnapshotSchema,
+        required: true,
+      },
+
+      feeStructure: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+        ref: "FeeStructure",
+        required: true,
+      },
+
+      remarks: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      promotedBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+      },
+
+      promotedAt: {
+        type: Date,
+        default: Date.now,
+      },
+
+      /*
+       * PENDING promotion में यह null
+       * रहेगा। APPLIED promotion में
+       * service current date भेजेगी।
+       */
+      appliedAt: {
+        type: Date,
+        default: null,
+      },
+
+      cancelledAt: {
+        type: Date,
+        default: null,
+      },
+
+      cancelledBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      cancellationReason: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+    },
+    {
+      _id: true,
+    }
+  );
+
+// =====================================================
+// Month-wise Late Fee Waiver
+// =====================================================
+
+const lateFeeWaiverSchema =
+  new mongoose.Schema(
+    {
+      month: {
+        type: String,
+        required: true,
+        trim: true,
+        match:
+          /^\d{4}-(0[1-9]|1[0-2])$/,
+      },
+
+      waivedAmount: {
+        type: Number,
+        required: true,
+        min: 0,
+        max: 50,
+      },
+
+      reason: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      waivedBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      waivedAt: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+    {
+      _id: true,
+    }
+  );
+
 const studentSchema = new mongoose.Schema(
   {
     // =====================================================
@@ -181,6 +407,21 @@ const studentSchema = new mongoose.Schema(
     },
 
     // =====================================================
+    // Class Promotion History
+    // =====================================================
+    //
+    // Class changes immediately for administration,
+    // while the promoted fee snapshot becomes effective
+    // from effectiveFrom (normally next month).
+    //
+    // =====================================================
+
+    classPromotionHistory: {
+      type: [classPromotionSchema],
+      default: [],
+    },
+
+    // =====================================================
     // Previous Pending Fee
     // =====================================================
 
@@ -259,7 +500,7 @@ const studentSchema = new mongoose.Schema(
     //
     // Example:
     //
-    // Monthly Fee = ₹1500
+    // Monthly Fee = â‚¹1500
     //
     // Student pays August -> March through Lump Sum.
     //
@@ -342,11 +583,11 @@ const studentSchema = new mongoose.Schema(
     //
     // Example:
     //
-    // Original Lump Sum = ₹12,000
+    // Original Lump Sum = â‚¹12,000
     // Discount = 10%
-    // Discount Amount = ₹1,200
+    // Discount Amount = â‚¹1,200
     //
-    // Final Paid Amount = ₹10,800
+    // Final Paid Amount = â‚¹10,800
     //
     // =====================================================
 
@@ -356,19 +597,39 @@ const studentSchema = new mongoose.Schema(
       min: 0,
     },
 
+    // =====================================================
+    // Month-wise Late Fee Waiver Records
+    // =====================================================
+
+    lateFeeWaivers: {
+      type: [lateFeeWaiverSchema],
+      default: [],
+    },
+
+    // =====================================================
+    // Legacy Late Fee Waiver Summary Fields
+    // =====================================================
+    //
+    // These fields are retained for backward compatibility.
+    // New waiver calculations use lateFeeWaivers.
+    //
+    // =====================================================
+
     lateFeeWaived: {
       type: Boolean,
-      default: false
+      default: false,
     },
 
     lateFeeWaiverAmount: {
       type: Number,
-      default: 0
+      default: 0,
+      min: 0,
     },
 
     lateFeeWaiverReason: {
       type: String,
-      default: ""
+      default: "",
+      trim: true,
     },
 
     // =====================================================
@@ -442,6 +703,19 @@ studentSchema.index(
 studentSchema.index({
   lumpSumPaid: 1,
   lumpSumPaidTill: 1,
+});
+
+// =====================================================
+// Class Promotion Effective Date Index
+// =====================================================
+//
+// Used by promotion history lookups and the atomic
+// pending-promotion check in student.repository.js.
+//
+// =====================================================
+
+studentSchema.index({
+  "classPromotionHistory.effectiveFrom": 1,
 });
 
 // =====================================================

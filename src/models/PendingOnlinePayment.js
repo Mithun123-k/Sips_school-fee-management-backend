@@ -13,19 +13,13 @@ const ALLOWED_FEE_HEADS = [
   "FUNCTION",
   "SMART_CLASS",
   "OTHER",
+  "LATE_FEE",
+  "OPENING_DUE",
+  "ALL",
 ];
 
 // =====================================================
 // Allowed Payment Types
-// =====================================================
-//
-// REGULAR
-//   -> Normal fee payment
-//
-// LUMP_SUM
-//   -> Academic year remaining fee payment
-//   -> Additional monthly discount applicable
-//
 // =====================================================
 
 const ALLOWED_PAYMENT_TYPES = [
@@ -35,20 +29,6 @@ const ALLOWED_PAYMENT_TYPES = [
 
 // =====================================================
 // Allowed Student Discount Types
-// =====================================================
-//
-// NONE
-//   -> No normal discount
-//
-// SIBLING
-//   -> Monthly Fee 20% discount
-//
-// RTE
-//   -> All fees 100% discount
-//
-// GIRL
-//   -> Admission Fee 50% discount
-//
 // =====================================================
 
 const ALLOWED_FEE_DISCOUNT_TYPES = [
@@ -112,17 +92,73 @@ const pendingOnlinePaymentSchema =
       },
 
       // ================================================
-      // Payment Amount
+      // Fee Breakdown
       // ================================================
-      //
-      // This is the FINAL amount expected to be paid.
-      //
-      // Example:
-      //
-      // Monthly Fee = ₹1500
-      // Lump Sum Discount = ₹150
-      // Payment Amount = ₹1350
-      //
+
+      feeBreakdown: {
+        MONTHLY: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+
+        ADMISSION: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+
+        EXAM: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+
+        SPORT: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+
+        COMPUTER: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+
+        FUNCTION: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+
+        SMART_CLASS: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+
+        OTHER: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+
+        LATE_FEE: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+
+        OPENING_DUE: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+      },
+
+      // ================================================
+      // Payment Amount
       // ================================================
 
       amount: {
@@ -131,6 +167,10 @@ const pendingOnlinePaymentSchema =
         min: 0.01,
       },
 
+      // ================================================
+      // Legacy Lump Sum Flag
+      // ================================================
+
       isLumpSum: {
         type: Boolean,
         default: false,
@@ -138,11 +178,6 @@ const pendingOnlinePaymentSchema =
 
       // ================================================
       // Payment Type
-      // ================================================
-      //
-      // REGULAR
-      // LUMP_SUM
-      //
       // ================================================
 
       paymentType: {
@@ -156,11 +191,6 @@ const pendingOnlinePaymentSchema =
       // ================================================
       // Student Discount Type
       // ================================================
-      //
-      // Snapshot of student's discount at the time
-      // QR payment was created.
-      //
-      // ================================================
 
       feeDiscountType: {
         type: String,
@@ -173,15 +203,6 @@ const pendingOnlinePaymentSchema =
       // ================================================
       // Lump Sum Discount Percentage
       // ================================================
-      //
-      // REGULAR:
-      // 0
-      //
-      // LUMP_SUM:
-      // Usually 10 for NONE / GIRL
-      // 0 for SIBLING / RTE
-      //
-      // ================================================
 
       lumpSumDiscountPercent: {
         type: Number,
@@ -192,10 +213,6 @@ const pendingOnlinePaymentSchema =
 
       // ================================================
       // Lump Sum Discount Amount
-      // ================================================
-      //
-      // Actual rupee amount discounted.
-      //
       // ================================================
 
       lumpSumDiscountAmount: {
@@ -243,14 +260,6 @@ const pendingOnlinePaymentSchema =
       // ================================================
       // Created By
       // ================================================
-      //
-      // Public payment:
-      // null
-      //
-      // Admin / Receptionist:
-      // User ObjectId
-      //
-      // ================================================
 
       createdBy: {
         type: mongoose.Schema.Types.ObjectId,
@@ -296,8 +305,7 @@ pendingOnlinePaymentSchema.index({
 // Export
 // =====================================================
 
-module.exports =
-  mongoose.model(
-    "PendingOnlinePayment",
-    pendingOnlinePaymentSchema
-  );
+module.exports = mongoose.model(
+  "PendingOnlinePayment",
+  pendingOnlinePaymentSchema
+);

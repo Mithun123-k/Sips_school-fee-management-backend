@@ -13,25 +13,14 @@ const ALLOWED_FEE_HEADS = [
   "FUNCTION",
   "SMART_CLASS",
   "OTHER",
-  "All",
+  "LATE_FEE",
+  "OPENING_DUE",
+  "ALL",
 ];
 
 // =====================================================
 // Allowed Payment Types
 // =====================================================
-//
-// REGULAR
-//   -> Normal fee payment
-//
-// LUMP_SUM
-//   -> Full-year / remaining-year payment
-//   -> Lump Sum eligibility will be checked
-//      inside fee.service.js
-//
-// IMPORTANT:
-// feeDiscountType is NOT accepted here.
-// It comes from Student record.
-//
 
 const ALLOWED_PAYMENT_TYPES = [
   "REGULAR",
@@ -39,39 +28,32 @@ const ALLOWED_PAYMENT_TYPES = [
 ];
 
 // =====================================================
+// Common Fee Head Validation
+// =====================================================
+
+const validateFeeHead = body("feeHead")
+  .notEmpty()
+  .withMessage("Fee head is required")
+  .isString()
+  .withMessage("Fee head must be a string")
+  .trim()
+  .customSanitizer((value) =>
+    value.toUpperCase()
+  )
+  .isIn(ALLOWED_FEE_HEADS)
+  .withMessage("Invalid fee head");
+
+// =====================================================
 // Collect CASH Fee Validation
 // =====================================================
 
 const collectFeeValidation = [
-  // ---------------------------------------------------
-  // Student ID
-  // ---------------------------------------------------
-
   body("studentId")
     .trim()
     .notEmpty()
-    .withMessage(
-      "Student ID is required"
-    ),
+    .withMessage("Student ID is required"),
 
-  // ---------------------------------------------------
-  // Fee Head
-  // ---------------------------------------------------
-
-  body("feeHead")
-    .trim()
-    .notEmpty()
-    .withMessage(
-      "Fee head is required"
-    )
-    .isIn(ALLOWED_FEE_HEADS)
-    .withMessage(
-      "Invalid fee head"
-    ),
-
-  // ---------------------------------------------------
-  // Amount
-  // ---------------------------------------------------
+  validateFeeHead,
 
   body("amount")
     .isFloat({ gt: 0 })
@@ -79,45 +61,18 @@ const collectFeeValidation = [
       "Amount must be greater than zero"
     ),
 
-  // ---------------------------------------------------
-  // Payment Mode
-  // ---------------------------------------------------
-
   body("paymentMode")
     .equals("CASH")
     .withMessage(
       "Manual fee collection is only allowed for CASH payment"
     ),
 
-  // ---------------------------------------------------
-  // Payment Type
-  // ---------------------------------------------------
-  //
-  // Optional for backward compatibility.
-  //
-  // If not provided:
-  // REGULAR
-  //
-  // If LUMP_SUM:
-  // fee.service.js will verify:
-  // - current eligibility month
-  // - student discount type
-  // - remaining fee
-  // - applicable 10% monthly discount
-  //
-
   body("paymentType")
     .optional({
       values: "falsy",
     })
     .isIn(ALLOWED_PAYMENT_TYPES)
-    .withMessage(
-      "Invalid payment type"
-    ),
-
-  // ---------------------------------------------------
-  // Transaction ID
-  // ---------------------------------------------------
+    .withMessage("Invalid payment type"),
 
   body("transactionId")
     .optional({
@@ -128,10 +83,6 @@ const collectFeeValidation = [
     .withMessage(
       "Transaction ID must be a string"
     ),
-
-  // ---------------------------------------------------
-  // Remarks
-  // ---------------------------------------------------
 
   body("remarks")
     .optional({
@@ -149,35 +100,12 @@ const collectFeeValidation = [
 // =====================================================
 
 const onlineQRValidation = [
-  // ---------------------------------------------------
-  // Student ID
-  // ---------------------------------------------------
-
   body("studentId")
     .trim()
     .notEmpty()
-    .withMessage(
-      "Student ID is required"
-    ),
+    .withMessage("Student ID is required"),
 
-  // ---------------------------------------------------
-  // Fee Head
-  // ---------------------------------------------------
-
-  body("feeHead")
-    .trim()
-    .notEmpty()
-    .withMessage(
-      "Fee head is required"
-    )
-    .isIn(ALLOWED_FEE_HEADS)
-    .withMessage(
-      "Invalid fee head"
-    ),
-
-  // ---------------------------------------------------
-  // Amount
-  // ---------------------------------------------------
+  validateFeeHead,
 
   body("amount")
     .isFloat({ gt: 0 })
@@ -185,31 +113,12 @@ const onlineQRValidation = [
       "Amount must be greater than zero"
     ),
 
-  // ---------------------------------------------------
-  // Payment Type
-  // ---------------------------------------------------
-  //
-  // Optional for backward compatibility.
-  //
-  // LUMP_SUM eligibility is NOT decided here.
-  // It must be checked in fee.service.js because
-  // service has access to:
-  //
-  // - Student discount type
-  // - Current due
-  // - Fee structure
-  // - Current month
-  // - Already paid fee
-  //
-
   body("paymentType")
     .optional({
       values: "falsy",
     })
     .isIn(ALLOWED_PAYMENT_TYPES)
-    .withMessage(
-      "Invalid payment type"
-    ),
+    .withMessage("Invalid payment type"),
 ];
 
 // =====================================================
@@ -218,10 +127,7 @@ const onlineQRValidation = [
 
 module.exports = {
   ALLOWED_FEE_HEADS,
-
   ALLOWED_PAYMENT_TYPES,
-
   collectFeeValidation,
-
   onlineQRValidation,
 };

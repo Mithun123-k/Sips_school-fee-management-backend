@@ -153,3 +153,40 @@ exports.searchStudent =
       );
     }
   );
+
+// =====================================================
+// Promote Student
+// ADMIN ONLY
+// =====================================================
+//
+// Current class and section are updated immediately.
+// New class fees become effective from the next
+// configured fee period.
+//
+// The service handles:
+// - Input and business-rule validation
+// - Duplicate pending promotion protection
+// - Fee structure lookup
+// - Old and new fee snapshots
+// - Atomic promotion history update
+//
+// =====================================================
+
+exports.promoteStudent =
+  asyncHandler(
+    async (req, res) => {
+      const result =
+        await studentService.promoteStudent(
+          req.body,
+          req.user.id
+        );
+
+      return sendResponse(
+        res,
+        200,
+        true,
+        "Student promoted successfully",
+        result
+      );
+    }
+  );

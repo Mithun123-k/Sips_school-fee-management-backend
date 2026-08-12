@@ -19,7 +19,11 @@ const normalizeDiscountType = (
   feeDiscountType
 ) => {
   const discountType =
-    feeDiscountType || "NONE";
+    String(
+      feeDiscountType || "NONE"
+    )
+      .trim()
+      .toUpperCase();
 
   if (
     !ALLOWED_DISCOUNT_TYPES.includes(
@@ -426,6 +430,217 @@ const updateStudent = async (
     },
     {
       $set: data,
+    },
+    {
+      new: true,
+
+      runValidators: true,
+    }
+  );
+};
+
+// =====================================================
+// Promote Student
+// =====================================================
+
+const promoteStudent = async (
+  id,
+  data = {}
+) => {
+  const finalClassName =
+    String(
+      data.className || ""
+    ).trim();
+
+  const finalSection =
+    String(
+      data.section || ""
+    ).trim();
+
+  const finalTotalFee =
+    Number(
+      data.totalFee || 0
+    );
+
+  const promotionDueAmount =
+    Number(
+      data.promotionDueAmount ?? 0
+    );
+
+  const promotion =
+    data.promotion;
+
+  const updatedBy =
+    data.updatedBy;
+
+  if (!finalClassName) {
+    throw new Error(
+      "Promoted class is required"
+    );
+  }
+
+  if (
+    !Number.isFinite(
+      finalTotalFee
+    ) ||
+    finalTotalFee < 0
+  ) {
+    throw new Error(
+      "Total fee must be a valid non-negative number"
+    );
+  }
+
+  if (
+    !Number.isFinite(
+      promotionDueAmount
+    ) ||
+    promotionDueAmount < 0
+  ) {
+    throw new Error(
+      "Promotion due amount must be a valid non-negative number"
+    );
+  }
+
+  if (
+    !promotion ||
+    typeof promotion !==
+      "object" ||
+    Array.isArray(promotion)
+  ) {
+    throw new Error(
+      "Promotion history data is required"
+    );
+  }
+
+  const effectiveFrom =
+    new Date(
+      promotion.effectiveFrom
+    );
+
+  if (
+    Number.isNaN(
+      effectiveFrom.getTime()
+    )
+  ) {
+    throw new Error(
+      "Valid promotion effective date is required"
+    );
+  }
+
+  if (!updatedBy) {
+    throw new Error(
+      "Promoting user is required"
+    );
+  }
+
+  /*
+   * केवल नई class की बाकी सात fees
+   * normalize और update होंगी।
+   *
+   * admissionFee को जानबूझकर
+   * यहां शामिल नहीं किया गया है।
+   */
+  const normalizedFees =
+    normalizeFeeValues({
+      admissionFee: 0,
+
+      monthlyFee:
+        data.monthlyFee,
+
+      examFee:
+        data.examFee,
+
+      sportFee:
+        data.sportFee,
+
+      computerFee:
+        data.computerFee,
+
+      functionFee:
+        data.functionFee,
+
+      smartClassFee:
+        data.smartClassFee,
+
+      otherCharges:
+        data.otherCharges,
+    });
+
+  const now =
+    new Date();
+
+  return await Student.findOneAndUpdate(
+    {
+      _id: id,
+
+      isDeleted: false,
+
+      status: "ACTIVE",
+
+      classPromotionHistory: {
+        $not: {
+          $elemMatch: {
+            effectiveFrom: {
+              $gt: now,
+            },
+          },
+        },
+      },
+    },
+    {
+      $set: {
+        className:
+          finalClassName,
+
+        section:
+          finalSection,
+
+        /*
+         * admissionFee यहां set नहीं होगी,
+         * इसलिए student की पुरानी
+         * admissionFee unchanged रहेगी।
+         */
+
+        monthlyFee:
+          normalizedFees.monthlyFee,
+
+        examFee:
+          normalizedFees.examFee,
+
+        sportFee:
+          normalizedFees.sportFee,
+
+        computerFee:
+          normalizedFees.computerFee,
+
+        functionFee:
+          normalizedFees.functionFee,
+
+        smartClassFee:
+          normalizedFees.smartClassFee,
+
+        otherCharges:
+          normalizedFees.otherCharges,
+
+        totalFee:
+          finalTotalFee,
+
+        updatedBy,
+      },
+
+      /*
+       * Admission fee छोड़कर बाकी नई fees
+       * existing dueFee में add होंगी।
+       */
+      $inc: {
+        dueFee:
+          promotionDueAmount,
+      },
+
+      $push: {
+        classPromotionHistory:
+          promotion,
+      },
     },
     {
       new: true,
@@ -955,6 +1170,8 @@ module.exports = {
   getStudentById,
 
   updateStudent,
+
+  promoteStudent,
 
   deleteStudent,
 

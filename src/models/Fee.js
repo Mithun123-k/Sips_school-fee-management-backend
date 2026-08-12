@@ -13,21 +13,13 @@ const ALLOWED_FEE_HEADS = [
   "FUNCTION",
   "SMART_CLASS",
   "OTHER",
-  "All",
+  "LATE_FEE",
+  "OPENING_DUE",
+  "ALL",
 ];
 
 // =====================================================
 // Allowed Payment Types
-// =====================================================
-//
-// REGULAR
-//   -> Normal fee payment
-//
-// LUMP_SUM
-//   -> Full eligible fee payment
-//   -> Additional 10% discount on MONTHLY fee
-//      only when applicable
-//
 // =====================================================
 
 const ALLOWED_PAYMENT_TYPES = [
@@ -37,20 +29,6 @@ const ALLOWED_PAYMENT_TYPES = [
 
 // =====================================================
 // Allowed Student Discount Types
-// =====================================================
-//
-// NONE
-//   -> No normal discount
-//
-// SIBLING
-//   -> Monthly Fee 20% discount
-//
-// RTE
-//   -> All fees 100% discount
-//
-// GIRL
-//   -> Admission Fee 50% discount
-//
 // =====================================================
 
 const ALLOWED_FEE_DISCOUNT_TYPES = [
@@ -107,27 +85,13 @@ const feeSchema = new mongoose.Schema(
     feeHead: {
       type: String,
       enum: ALLOWED_FEE_HEADS,
-      // required: true,
+      required: true,
       trim: true,
       index: true,
     },
 
     // =================================================
     // Amount Actually Paid
-    // =================================================
-    //
-    // IMPORTANT:
-    // This is the FINAL amount actually paid by
-    // the student after applicable discounts.
-    //
-    // Example:
-    //
-    // Monthly Fee = ₹1500
-    // Lump Sum 10% = ₹150 discount
-    // Paid = ₹1350
-    //
-    // amount = 1350
-    //
     // =================================================
 
     amount: {
@@ -139,41 +103,71 @@ const feeSchema = new mongoose.Schema(
     // =================================================
     // Fee Breakdown
     // =================================================
-    //
-    // This is the breakdown of the amount paid by
-    // the student for each fee head.
-    //
-    // Example:
-    //
-    // Monthly Fee = ₹1500
-    // Exam Fee = ₹500
-    // Total Paid = ₹2000
-    //
-    // feeBreakdown: {
-    //   MONTHLY: 1500,
-    //   EXAM: 500,
-    // }
-    //
-    // =================================================
 
     feeBreakdown: {
-      MONTHLY: { type: Number, default: 0 },
-      ADMISSION: { type: Number, default: 0 },
-      EXAM: { type: Number, default: 0 },
-      SPORT: { type: Number, default: 0 },
-      COMPUTER: { type: Number, default: 0 },
-      FUNCTION: { type: Number, default: 0 },
-      SMART_CLASS: { type: Number, default: 0 },
-      OTHER: { type: Number, default: 0 },
+      MONTHLY: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      ADMISSION: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      EXAM: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      SPORT: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      COMPUTER: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      FUNCTION: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      SMART_CLASS: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      OTHER: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      LATE_FEE: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      OPENING_DUE: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
     },
 
     // =================================================
     // Payment Type
-    // =================================================
-    //
-    // REGULAR
-    // LUMP_SUM
-    //
     // =================================================
 
     paymentType: {
@@ -187,15 +181,6 @@ const feeSchema = new mongoose.Schema(
     // =================================================
     // Student Normal Discount Type
     // =================================================
-    //
-    // Stored with payment for receipt/report history.
-    //
-    // NONE
-    // SIBLING
-    // RTE
-    // GIRL
-    //
-    // =================================================
 
     feeDiscountType: {
       type: String,
@@ -208,16 +193,6 @@ const feeSchema = new mongoose.Schema(
     // =================================================
     // Lump Sum Discount Percentage
     // =================================================
-    //
-    // Only applicable when paymentType = LUMP_SUM.
-    //
-    // Current rule:
-    // 10% additional discount on MONTHLY fee.
-    //
-    // For REGULAR payment:
-    // 0
-    //
-    // =================================================
 
     lumpSumDiscountPercent: {
       type: Number,
@@ -228,16 +203,6 @@ const feeSchema = new mongoose.Schema(
 
     // =================================================
     // Lump Sum Discount Amount
-    // =================================================
-    //
-    // Actual rupee amount discounted from the payment.
-    //
-    // Example:
-    //
-    // Monthly Fee = ₹1500
-    // Lump Sum Discount = 10%
-    // Discount Amount = ₹150
-    //
     // =================================================
 
     lumpSumDiscountAmount: {
@@ -299,14 +264,6 @@ const feeSchema = new mongoose.Schema(
     // =================================================
     // Collected By
     // =================================================
-    //
-    // CASH:
-    // ADMIN / RECEPTIONIST
-    //
-    // ONLINE:
-    // Public payment can have null
-    //
-    // =================================================
 
     collectedBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -340,7 +297,6 @@ feeSchema.index({
 
 feeSchema.index({
   student: 1,
-  // feeHead: 1,
   paymentStatus: 1,
 });
 
