@@ -92,11 +92,11 @@ router.get(
 
 router.get(
   "/:id",
-  auth,
-  authorize(
-    "ADMIN",
-    "RECEPTIONIST"
-  ),
+  // auth,
+  // authorize(
+  //   "ADMIN",
+  //   "RECEPTIONIST"
+  // ),
   studentController.getStudentById
 );
 
