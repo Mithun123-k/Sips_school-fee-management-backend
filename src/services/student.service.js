@@ -4696,6 +4696,8 @@ const searchStudent = async (
     // ===============================================
 
     result.push({
+      id:
+        updatedStudent._id, 
       studentId:
         updatedStudent.studentId,
 
