@@ -1826,11 +1826,35 @@ const getLateFeeSummary = ({
       const lateFee =
         Math.max(Number(item.lateFee || 0), 0);
 
-      // Paid late fee oldest month à¤¸à¥‡ adjust à¤¹à¥‹à¤—à¥€
+      const requestedWaiver =
+        Math.max(
+          Number(
+            waiverByMonth.get(item.month) || 0
+          ),
+          0
+        );
+
+      // A saved waiver permanently protects that part
+      // of the month. Future payments are allocated only
+      // against the remaining payable balance.
+      const waivedAmount =
+        Math.min(
+          requestedWaiver,
+          lateFee
+        );
+
+      const remainingAfterWaiver =
+        Math.max(
+          lateFee - waivedAmount,
+          0
+        );
+
+      // Paid late fee is adjusted oldest month first,
+      // after its saved waiver has been applied.
       const lateFeePaid =
         Math.min(
           remainingPaidLateFee,
-          lateFee
+          remainingAfterWaiver
         );
 
       remainingPaidLateFee =
@@ -1840,34 +1864,10 @@ const getLateFeeSummary = ({
           0
         );
 
-      const remainingAfterPayment =
-        Math.max(
-          lateFee - lateFeePaid,
-          0
-        );
-
-      const requestedWaiver =
-        Math.max(
-          Number(
-            waiverByMonth.get(item.month) || 0
-          ),
-          0
-        );
-
-      // à¤œà¤¿à¤¸ month à¤®à¥‡à¤‚ late fee payment à¤¹à¥ˆ,
-      // à¤‰à¤¸ à¤ªà¥‚à¤°à¥‡ month à¤ªà¤° waiver à¤²à¤¾à¤—à¥‚ à¤¨à¤¹à¥€à¤‚ à¤¹à¥‹à¤—à¤¾
-      const waivedAmount =
-        lateFeePaid > 0
-          ? 0
-          : Math.min(
-              requestedWaiver,
-              remainingAfterPayment
-            );
-
       const payableLateFee =
         Math.max(
-          remainingAfterPayment -
-            waivedAmount,
+          remainingAfterWaiver -
+            lateFeePaid,
           0
         );
 
@@ -5145,16 +5145,6 @@ const waiveLateFee = async (
   ) {
     throw new Error(
       "No late fee exists for this month"
-    );
-  }
-
-  // à¤œà¤¿à¤¸ à¤®à¤¹à¥€à¤¨à¥‡ late fee pay à¤¹à¥à¤ˆ à¤¹à¥ˆ,
-  // à¤‰à¤¸ à¤®à¤¹à¥€à¤¨à¥‡ waiver à¤¬à¤¿à¤²à¥à¤•à¥à¤² à¤¨à¤¹à¥€à¤‚ à¤¹à¥‹à¤—à¤¾
-  if (
-    lateFeePaid > 0
-  ) {
-    throw new Error(
-      "Paid late fee cannot be waived"
     );
   }
 
