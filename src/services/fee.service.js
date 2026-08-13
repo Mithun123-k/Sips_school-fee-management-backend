@@ -1948,6 +1948,7 @@ const getLateFeeSummary = ({
 const calculateFeeByHead = async ({
   studentId,
   feeHead,
+  includeLumpSumDetails = false,
 }) => {
   // ===================================================
   // Get Student
@@ -2905,6 +2906,44 @@ const calculateFeeByHead = async ({
     );
 
   // ===================================================
+  // Optional Lump Sum Details
+  // Used by POST /api/fees/calculate only. Internal fee
+  // recalculations keep their previous lightweight flow.
+  // ===================================================
+
+  let lumpSumDetails = null;
+
+  if (includeLumpSumDetails) {
+    if (student.lumpSumPaid === true) {
+      lumpSumDetails = {
+        eligible: false,
+        paymentType: "LUMP_SUM",
+        reason:
+          "Lump Sum payment has already been paid for this student",
+        lumpSumAmount: 0,
+      };
+    } else {
+      try {
+        lumpSumDetails =
+          await calculateLumpSumDetails(
+            student,
+            currentDate
+          );
+      } catch (error) {
+        lumpSumDetails = {
+          eligible: false,
+          paymentType:
+            "LUMP_SUM",
+          reason:
+            error.message ||
+            "Lump Sum details are not available",
+          lumpSumAmount: 0,
+        };
+      }
+    }
+  }
+
+  // ===================================================
   // Final Response
   // ===================================================
 
@@ -2980,6 +3019,10 @@ const calculateFeeByHead = async ({
 
     dueFee:
       totalDue,
+
+    ...(includeLumpSumDetails
+      ? { lumpSumDetails }
+      : {}),
   };
 };
 
@@ -3053,11 +3096,35 @@ const calculateLumpSumDetails = async (
 
       remainingAcademicFee: 0,
 
+      lateFee: 0,
+
+      lateFeeWaived: 0,
+
+      lateFeePaid: 0,
+
+      payableLateFee: 0,
+
+      lateFeeDetails: [],
+
       additionalDiscount: 0,
 
       discountedMonthlyAmount: 0,
 
       lumpSumAmount: 0,
+
+      feeBreakdown: {
+        MONTHLY: 0,
+        BUS: 0,
+        ADMISSION: 0,
+        EXAM: 0,
+        SPORT: 0,
+        COMPUTER: 0,
+        FUNCTION: 0,
+        SMART_CLASS: 0,
+        OTHER: 0,
+        LATE_FEE: 0,
+        OPENING_DUE: 0,
+      },
 
       waivedMonthlyFeeMonths: [],
     };
@@ -3067,9 +3134,16 @@ const calculateLumpSumDetails = async (
   // Paid History
   // -------------------------------------------------
 
+  const history =
+    await feeRepository
+      .getFeeHistory(
+        student.studentId
+      );
+
   const paid =
     await getPaidFeeHeadAmounts(
-      student
+      student,
+      history
     );
 
   // -------------------------------------------------
@@ -3124,11 +3198,35 @@ const calculateLumpSumDetails = async (
 
       remainingAcademicFee: 0,
 
+      lateFee: 0,
+
+      lateFeeWaived: 0,
+
+      lateFeePaid: 0,
+
+      payableLateFee: 0,
+
+      lateFeeDetails: [],
+
       additionalDiscount: 0,
 
       discountedMonthlyAmount: 0,
 
       lumpSumAmount: 0,
+
+      feeBreakdown: {
+        MONTHLY: 0,
+        BUS: 0,
+        ADMISSION: 0,
+        EXAM: 0,
+        SPORT: 0,
+        COMPUTER: 0,
+        FUNCTION: 0,
+        SMART_CLASS: 0,
+        OTHER: 0,
+        LATE_FEE: 0,
+        OPENING_DUE: 0,
+      },
 
       waivedMonthlyFeeMonths: [],
     };
@@ -3335,6 +3433,44 @@ const calculateLumpSumDetails = async (
     );
 
   // -------------------------------------------------
+  // Payable Late Fee
+  // Only overdue, unpaid, non-waived monthly periods
+  // are included. Lump-sum discount never applies to it.
+  // -------------------------------------------------
+
+  const paidFeeMonths =
+    getPaidFeeMonths({
+      student,
+      history,
+      monthlyPaid,
+      feeStartDate:
+        effectiveStartDate,
+      monthlyDetails:
+        monthlyFeeSchedule,
+    });
+
+  const lateFeeSummary =
+    getLateFeeSummary({
+      student,
+      feeStartDate:
+        effectiveStartDate,
+      currentDate,
+      paidFeeMonths,
+      paidLateFee:
+        paid.LATE_FEE,
+      excludedFeeMonths:
+        monthlyFeeWaiverContext
+          .waivedMonthKeys,
+    });
+
+  const payableLateFee =
+    Number(
+      lateFeeSummary
+        .payableLateFee
+        .toFixed(2)
+    );
+
+  // -------------------------------------------------
   // Remaining Months
   // -------------------------------------------------
 
@@ -3425,41 +3561,54 @@ const calculateLumpSumDetails = async (
   // One-Time Fees
   // -------------------------------------------------
 
-  const oneTimeFees =
-    getNormalOneTimeFees(
-      student
-    );
+  const oneTimeFeeHeads = [
+    "ADMISSION",
+    "EXAM",
+    "SPORT",
+    "COMPUTER",
+    "FUNCTION",
+    "SMART_CLASS",
+    "OTHER",
+  ];
 
-  const alreadyPaidOneTime =
-    Number(
-      paid.ADMISSION || 0
-    ) +
-    Number(
-      paid.EXAM || 0
-    ) +
-    Number(
-      paid.SPORT || 0
-    ) +
-    Number(
-      paid.COMPUTER || 0
-    ) +
-    Number(
-      paid.FUNCTION || 0
-    ) +
-    Number(
-      paid.SMART_CLASS || 0
-    ) +
-    Number(
-      paid.OTHER || 0
+  const remainingOneTimeFeeBreakdown =
+    {};
+
+  for (const head of oneTimeFeeHeads) {
+    const effectiveAmount =
+      getEffectiveFeeHeadAmount(
+        student,
+        head
+      );
+
+    const alreadyPaid =
+      Number(paid[head] || 0);
+
+    remainingOneTimeFeeBreakdown[
+      head
+    ] = Number(
+      Math.max(
+        effectiveAmount -
+          alreadyPaid,
+        0
+      ).toFixed(2)
     );
+  }
 
   const remainingOneTimeFees =
     Number(
-      Math.max(
-        oneTimeFees -
-        alreadyPaidOneTime,
-        0
-      ).toFixed(2)
+      oneTimeFeeHeads
+        .reduce(
+          (total, head) =>
+            total +
+            Number(
+              remainingOneTimeFeeBreakdown[
+                head
+              ] || 0
+            ),
+          0
+        )
+        .toFixed(2)
     );
 
   // -------------------------------------------------
@@ -3471,7 +3620,8 @@ const calculateLumpSumDetails = async (
       (
         remainingMonthlyAmount +
         remainingBusFee +
-        remainingOneTimeFees
+        remainingOneTimeFees +
+        payableLateFee
       ).toFixed(2)
     );
 
@@ -3520,14 +3670,51 @@ const calculateLumpSumDetails = async (
   // Final Lump Sum Amount
   // -------------------------------------------------
 
+  const lumpSumFeeBreakdown = {
+    MONTHLY:
+      Number(
+        discountedMonthlyAmount
+          .toFixed(2)
+      ),
+    BUS: remainingBusFee,
+    ADMISSION:
+      remainingOneTimeFeeBreakdown
+        .ADMISSION,
+    EXAM:
+      remainingOneTimeFeeBreakdown
+        .EXAM,
+    SPORT:
+      remainingOneTimeFeeBreakdown
+        .SPORT,
+    COMPUTER:
+      remainingOneTimeFeeBreakdown
+        .COMPUTER,
+    FUNCTION:
+      remainingOneTimeFeeBreakdown
+        .FUNCTION,
+    SMART_CLASS:
+      remainingOneTimeFeeBreakdown
+        .SMART_CLASS,
+    OTHER:
+      remainingOneTimeFeeBreakdown
+        .OTHER,
+    LATE_FEE:
+      payableLateFee,
+    OPENING_DUE: 0,
+  };
+
   const lumpSumAmount =
     Number(
-      Math.max(
-        discountedMonthlyAmount +
-        remainingBusFee +
-        remainingOneTimeFees,
-        0
-      ).toFixed(2)
+      Object.values(
+        lumpSumFeeBreakdown
+      )
+        .reduce(
+          (total, value) =>
+            total +
+            Number(value || 0),
+          0
+        )
+        .toFixed(2)
     );
 
   // -------------------------------------------------
@@ -3588,11 +3775,30 @@ const calculateLumpSumDetails = async (
 
     remainingAcademicFee,
 
+    lateFee:
+      lateFeeSummary.lateFee,
+
+    lateFeeWaived:
+      lateFeeSummary
+        .lateFeeWaived,
+
+    lateFeePaid:
+      lateFeeSummary.lateFeePaid,
+
+    payableLateFee,
+
+    lateFeeDetails:
+      lateFeeSummary
+        .monthWiseLateFee,
+
     additionalDiscount,
 
     discountedMonthlyAmount,
 
     lumpSumAmount,
+
+    feeBreakdown:
+      lumpSumFeeBreakdown,
   };
 };
 
@@ -3644,6 +3850,80 @@ const validateLumpSumPayment =
 
     return details;
   };
+
+// =====================================================
+// Apply Server-Calculated Lump Sum Breakdown
+// =====================================================
+
+const applyLumpSumFeeBreakdown = (
+  target,
+  lumpSumDetails
+) => {
+  const calculatedBreakdown =
+    lumpSumDetails?.feeBreakdown;
+
+  if (
+    !calculatedBreakdown ||
+    typeof calculatedBreakdown !==
+      "object"
+  ) {
+    throw new Error(
+      "Lump Sum fee breakdown could not be calculated"
+    );
+  }
+
+  for (const head of Object.keys(target)) {
+    const amount =
+      Number(
+        calculatedBreakdown[head] ||
+        0
+      );
+
+    if (
+      !Number.isFinite(amount) ||
+      amount < 0
+    ) {
+      throw new Error(
+        `Invalid calculated Lump Sum ${head} amount`
+      );
+    }
+
+    target[head] =
+      Number(amount.toFixed(2));
+  }
+
+  const breakdownTotal =
+    Number(
+      Object.values(target)
+        .reduce(
+          (total, amount) =>
+            total +
+            Number(amount || 0),
+          0
+        )
+        .toFixed(2)
+    );
+
+  const expectedAmount =
+    Number(
+      Number(
+        lumpSumDetails.lumpSumAmount
+      ).toFixed(2)
+    );
+
+  if (
+    Math.abs(
+      breakdownTotal -
+      expectedAmount
+    ) > 0.01
+  ) {
+    throw new Error(
+      "Calculated Lump Sum fee breakdown does not match the payable amount"
+    );
+  }
+
+  return target;
+};
 
 // =====================================================
 // RTE Payment Protection
@@ -3712,6 +3992,8 @@ const buildFeePaymentData = ({
         FUNCTION: 0,
         SMART_CLASS: 0,
         OTHER: 0,
+        LATE_FEE: 0,
+        OPENING_DUE: 0,
       },
 
     paymentType,
@@ -4343,10 +4625,25 @@ const collectFee = async (
   };
 
   // ===================================================
-  // ALL Fee Payment
+  // Lump Sum Breakdown
+  // Always calculated by the backend, including late fee.
   // ===================================================
 
   if (
+    finalPaymentType ===
+    "LUMP_SUM"
+  ) {
+    applyLumpSumFeeBreakdown(
+      normalizedFeeBreakdown,
+      lumpSumDetails
+    );
+  }
+
+  // ===================================================
+  // ALL Regular Fee Payment
+  // ===================================================
+
+  else if (
     finalFeeHead === "ALL"
   ) {
     // ===============================================
@@ -5431,10 +5728,25 @@ const createOnlineQR = async (
   };
 
   // ===================================================
-  // ALL Fee Payment
+  // Lump Sum Breakdown
+  // Always calculated by the backend, including late fee.
   // ===================================================
 
   if (
+    finalPaymentType ===
+    "LUMP_SUM"
+  ) {
+    applyLumpSumFeeBreakdown(
+      normalizedFeeBreakdown,
+      lumpSumDetails
+    );
+  }
+
+  // ===================================================
+  // ALL Regular Fee Payment
+  // ===================================================
+
+  else if (
     finalFeeHead === "ALL"
   ) {
     if (
@@ -6264,6 +6576,20 @@ const checkOnlinePayment =
           paidAmount.toFixed(2)
         );
       }
+    }
+
+    // A captured Lump Sum payment always uses the
+    // freshly recalculated server breakdown. This keeps
+    // LATE_FEE allocation correct even for older pending
+    // QR records that did not save it.
+    if (
+      finalPaymentType ===
+      "LUMP_SUM"
+    ) {
+      applyLumpSumFeeBreakdown(
+        paymentFeeBreakdown,
+        lumpSumDetails
+      );
     }
 
     // =================================================

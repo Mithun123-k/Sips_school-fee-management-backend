@@ -286,6 +286,8 @@ exports.calculateFee =
           {
             studentId,
             feeHead,
+            includeLumpSumDetails:
+              true,
           }
         );
 
