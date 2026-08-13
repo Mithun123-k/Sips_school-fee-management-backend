@@ -9,6 +9,11 @@ const FEE_FIELDS = [
   "otherCharges",
 ];
 
+const {
+  getCalendarMonthKey,
+  normalizeWaivedMonthKeys,
+} = require("./monthlyFeeWaiver");
+
 // =====================================================
 // Get Normalized Fee Snapshot
 // =====================================================
@@ -360,6 +365,7 @@ const calculateAccruedMonthlyFee =
     feeStartDate,
     currentDate =
     new Date(),
+    waivedMonths = [],
   }) => {
     if (
       !student ||
@@ -427,6 +433,11 @@ const calculateAccruedMonthlyFee =
 
     const details = [];
 
+    const waivedMonthKeys =
+      normalizeWaivedMonthKeys(
+        waivedMonths
+      );
+
     // ===================================================
     // TEST MODE
     // 1 minute = 1 month
@@ -472,6 +483,32 @@ const calculateAccruedMonthlyFee =
             1000
           );
 
+        /*
+         * Test mode में one minute one month है,
+         * इसलिए waiver check virtual calendar month
+         * के आधार पर होगा।
+         */
+        const virtualMonthDate =
+          new Date(
+            start.getFullYear(),
+            start.getMonth() +
+              index,
+            1
+          );
+
+        const feeMonthKey =
+          getCalendarMonthKey(
+            virtualMonthDate
+          );
+
+        if (
+          waivedMonthKeys.has(
+            feeMonthKey
+          )
+        ) {
+          continue;
+        }
+
         const snapshot =
           getFeeSnapshotForDate(
             student,
@@ -491,6 +528,9 @@ const calculateAccruedMonthlyFee =
           month:
             periodDate
               .toISOString(),
+
+          feeMonth:
+            feeMonthKey,
 
           className:
             snapshot.className,
@@ -583,6 +623,23 @@ const calculateAccruedMonthlyFee =
             0
           );
 
+        const feeMonthKey =
+          getCalendarMonthKey(
+            periodDate
+          );
+
+        /*
+         * Global waiver वाले month की monthly fee
+         * schedule में add नहीं होगी।
+         */
+        if (
+          waivedMonthKeys.has(
+            feeMonthKey
+          )
+        ) {
+          continue;
+        }
+
         const snapshot =
           getFeeSnapshotForDate(
             student,
@@ -600,13 +657,7 @@ const calculateAccruedMonthlyFee =
 
         details.push({
           month:
-            `${periodDate.getFullYear()}-${String(
-              periodDate.getMonth() +
-              1
-            ).padStart(
-              2,
-              "0"
-            )}`,
+            feeMonthKey,
 
           className:
             snapshot.className,

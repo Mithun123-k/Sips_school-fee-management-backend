@@ -226,6 +226,238 @@ const lateFeeWaiverSchema =
     }
   );
 
+// =====================================================
+// Bus Facility Period History
+// =====================================================
+
+const busFacilityPeriodSchema =
+  new mongoose.Schema(
+    {
+      busFee: {
+        type: Number,
+        required: true,
+        min: 0.01,
+      },
+
+      effectiveFrom: {
+        type: Date,
+        required: true,
+      },
+
+      effectiveTo: {
+        type: Date,
+        default: null,
+      },
+
+      status: {
+        type: String,
+        enum: [
+          "ACTIVE",
+          "STOPPED",
+        ],
+        default: "ACTIVE",
+        required: true,
+      },
+
+      startType: {
+        type: String,
+        enum: [
+          "ADMISSION",
+          "LATER_START",
+          "RESTART",
+        ],
+        default: "ADMISSION",
+        required: true,
+      },
+
+      firstMonthProrated: {
+        type: Boolean,
+        default: false,
+      },
+
+      daysInStartMonth: {
+        type: Number,
+        min: 1,
+        max: 31,
+        default: null,
+      },
+
+      chargeableDays: {
+        type: Number,
+        min: 1,
+        max: 31,
+        default: null,
+      },
+
+      firstMonthBusFee: {
+        type: Number,
+        min: 0,
+        default: null,
+      },
+
+      fullMonthlyFeeFrom: {
+        type: Date,
+        default: null,
+      },
+
+      coveredByExistingLumpSum: {
+        type: Boolean,
+        default: true,
+      },
+
+      startReason: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      stopReason: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      startedBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      startedAt: {
+        type: Date,
+        default: Date.now,
+      },
+
+      stoppedBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      stoppedAt: {
+        type: Date,
+        default: null,
+      },
+    },
+    {
+      _id: true,
+    }
+  );
+
+// =====================================================
+// Cash Bus Fee Refund Audit
+// =====================================================
+
+const refundableBusMonthSchema =
+  new mongoose.Schema(
+    {
+      month: {
+        type: String,
+        required: true,
+        trim: true,
+        match:
+          /^\d{4}-(0[1-9]|1[0-2])$/,
+      },
+
+      amount: {
+        type: Number,
+        required: true,
+        min: 0.01,
+      },
+    },
+    {
+      _id: false,
+    }
+  );
+
+const busFeeRefundSchema =
+  new mongoose.Schema(
+    {
+      refundNo: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      amount: {
+        type: Number,
+        required: true,
+        min: 0.01,
+      },
+
+      refundMode: {
+        type: String,
+        enum: ["CASH"],
+        default: "CASH",
+        required: true,
+      },
+
+      status: {
+        type: String,
+        enum: ["COMPLETED"],
+        default: "COMPLETED",
+        required: true,
+      },
+
+      effectiveFrom: {
+        type: Date,
+        required: true,
+      },
+
+      lastBusChargeDate: {
+        type: Date,
+        required: true,
+      },
+
+      refundableMonths: {
+        type: [String],
+        default: [],
+      },
+
+      refundableMonthDetails: {
+        type: [
+          refundableBusMonthSchema,
+        ],
+        default: [],
+      },
+
+      reason: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      receivedBy: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      remarks: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      refundedBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+      },
+
+      refundedAt: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+    {
+      _id: true,
+    }
+  );
+
 const studentSchema = new mongoose.Schema(
   {
     // =====================================================
@@ -368,6 +600,52 @@ const studentSchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: 0,
+    },
+
+    hasBusFacility: {
+      type: Boolean,
+      default: false,
+      required: true,
+    },
+
+    busFee: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    busFacilityHistory: {
+      type: [
+        busFacilityPeriodSchema,
+      ],
+      default: [],
+    },
+
+    busFacilityStartEffectiveFrom: {
+      type: Date,
+      default: null,
+    },
+
+    busFacilityStopEffectiveFrom: {
+      type: Date,
+      default: null,
+    },
+
+    busFacilityStoppedAt: {
+      type: Date,
+      default: null,
+    },
+
+    busFacilityStoppedBy: {
+      type:
+        mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    busFeeRefunds: {
+      type: [busFeeRefundSchema],
+      default: [],
     },
 
     examFee: {
@@ -716,6 +994,15 @@ studentSchema.index({
 
 studentSchema.index({
   "classPromotionHistory.effectiveFrom": 1,
+});
+
+studentSchema.index({
+  "busFacilityHistory.effectiveFrom": 1,
+  "busFacilityHistory.effectiveTo": 1,
+});
+
+studentSchema.index({
+  "busFeeRefunds.refundNo": 1,
 });
 
 // =====================================================

@@ -338,3 +338,28 @@ exports.revokeLateFeeWaiver =
       );
     }
   );
+
+// =====================================================
+// Waive Monthly Fee For All Students
+// ADMIN ONLY
+// =====================================================
+
+exports.waiveMonthlyFeeForAllStudents =
+  asyncHandler(
+    async (req, res) => {
+      const result =
+        await feeService
+          .waiveMonthlyFeeForAllStudents(
+            req.body,
+            req.user.id
+          );
+
+      return sendResponse(
+        res,
+        200,
+        true,
+        "Monthly fee waived for all students successfully",
+        result
+      );
+    }
+  );

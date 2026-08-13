@@ -7,6 +7,9 @@ const studentRepository =
 const pendingOnlinePaymentRepository =
   require("../repositories/pendingOnlinePayment.repository");
 
+const monthlyFeeWaiverRepository =
+  require("../repositories/monthlyFeeWaiver.repository");
+
 const razorpay =
   require("../config/razorpay");
 
@@ -23,6 +26,18 @@ const {
   calculateAccruedMonthlyFee,
 } = require("../utils/studentPromotionFee");
 
+const {
+  calculateAccruedBusFee,
+  getBusFacilityPeriods,
+} = require("../utils/calculateBusFee");
+
+const {
+  normalizeAcademicYear,
+  normalizeAcademicMonth,
+  getAcademicMonthKey,
+  getCalendarMonthKey,
+} = require("../utils/monthlyFeeWaiver");
+
 // =====================================================
 // Allowed Fee Heads
 // =====================================================
@@ -30,6 +45,7 @@ const {
 const ALLOWED_FEE_HEADS = [
   "ADMISSION",
   "MONTHLY",
+  "BUS",
   "EXAM",
   "SPORT",
   "COMPUTER",
@@ -955,6 +971,7 @@ const getPaidFeeHeadAmounts = async (
   const paid = {
     ADMISSION: 0,
     MONTHLY: 0,
+    BUS: 0,
     EXAM: 0,
     SPORT: 0,
     COMPUTER: 0,
@@ -1095,6 +1112,55 @@ const getPaidFeeHeadAmounts = async (
     }
   }
 
+  // ===============================================
+  // Completed Cash BUS Refunds
+  // ===============================================
+  //
+  // Original payment records remain unchanged for
+  // audit. Completed BUS refunds reduce only the net
+  // paid amount for the BUS fee head.
+  //
+  // ===============================================
+
+  const completedBusRefunds =
+    (
+      Array.isArray(
+        student.busFeeRefunds
+      )
+        ? student.busFeeRefunds
+        : []
+    ).reduce(
+      (total, refund) => {
+        const status =
+          String(
+            refund?.status || ""
+          )
+            .trim()
+            .toUpperCase();
+
+        const amount =
+          Number(refund?.amount || 0);
+
+        if (
+          status !== "COMPLETED" ||
+          !Number.isFinite(amount) ||
+          amount <= 0
+        ) {
+          return total;
+        }
+
+        return total + amount;
+      },
+      0
+    );
+
+  paid.BUS =
+    Math.max(
+      paid.BUS -
+      completedBusRefunds,
+      0
+    );
+
   for (
     const head of Object.keys(
       paid
@@ -1132,6 +1198,196 @@ const getMonthKey = (dateValue) => {
     date.getMonth() + 1
   ).padStart(2, "0")}`;
 };
+
+// =====================================================
+// Get Active Global Monthly Fee Waivers
+// =====================================================
+
+const getActiveMonthlyFeeWaiverContext =
+  async (
+    startDate,
+    endDate
+  ) => {
+    const start =
+      new Date(startDate);
+
+    const end =
+      new Date(endDate);
+
+    if (
+      Number.isNaN(
+        start.getTime()
+      ) ||
+      Number.isNaN(
+        end.getTime()
+      ) ||
+      start > end
+    ) {
+      return {
+        waivedMonthKeys: [],
+        waivers: [],
+      };
+    }
+
+    const waivers =
+      await monthlyFeeWaiverRepository
+        .getActiveMonthlyFeeWaivers({
+          startMonth:
+            getCalendarMonthKey(
+              start
+            ),
+
+          endMonth:
+            getCalendarMonthKey(
+              end
+            ),
+        });
+
+    return {
+      waivedMonthKeys:
+        waivers.map(
+          (waiver) =>
+            waiver.month
+        ),
+
+      waivers:
+        waivers.map(
+          (waiver) => ({
+            academicYear:
+              waiver.academicYear,
+
+            month:
+              waiver.month,
+
+            monthName:
+              waiver.monthName,
+
+            reason:
+              waiver.reason,
+
+            waivedAt:
+              waiver.waivedAt,
+          })
+        ),
+    };
+  };
+
+// =====================================================
+// Waive Monthly Fee For Every Student
+// ADMIN ONLY
+// =====================================================
+
+const waiveMonthlyFeeForAllStudents =
+  async (
+    body = {},
+    userId
+  ) => {
+    const academicYear =
+      normalizeAcademicYear(
+        body.academicYear
+      );
+
+    const reason = String(
+      body.reason || ""
+    ).trim();
+
+    if (!reason) {
+      throw new Error(
+        "Waiver reason is required"
+      );
+    }
+
+    if (reason.length > 250) {
+      throw new Error(
+        "Waiver reason cannot exceed 250 characters"
+      );
+    }
+
+    if (
+      !Array.isArray(
+        body.months
+      ) ||
+      body.months.length === 0
+    ) {
+      throw new Error(
+        "At least one month is required"
+      );
+    }
+
+    const monthNames = [
+      ...new Set(
+        body.months.map(
+          (month) =>
+            normalizeAcademicMonth(
+              month
+            )
+        )
+      ),
+    ];
+
+    const now = new Date();
+
+    const waiverData =
+      monthNames.map(
+        (monthName) => ({
+          academicYear:
+            academicYear.value,
+
+          month:
+            getAcademicMonthKey({
+              academicYear:
+                academicYear.value,
+              monthName,
+            }),
+
+          monthName,
+          reason,
+          waivedBy: userId,
+          waivedAt: now,
+        })
+      );
+
+    const savedWaivers =
+      await monthlyFeeWaiverRepository
+        .upsertMonthlyFeeWaivers(
+          waiverData
+        );
+
+    return {
+      academicYear:
+        academicYear.value,
+
+      appliesTo:
+        "ALL_STUDENTS",
+
+      totalWaivedMonths:
+        savedWaivers.length,
+
+      waivedMonths:
+        savedWaivers.map(
+          (waiver) => ({
+            month:
+              waiver.month,
+
+            monthName:
+              waiver.monthName,
+
+            reason:
+              waiver.reason,
+
+            waivedAt:
+              waiver.waivedAt,
+          })
+        ),
+
+      excludedFrom: [
+        "MONTHLY_FEE_ACCRUAL",
+        "BUS_FEE_ACCRUAL",
+        "LATE_FEE",
+        "LUMP_SUM",
+      ],
+    };
+  };
 
 const normalizePaidMonthEntry = (
   entry,
@@ -1520,6 +1776,7 @@ const getLateFeeSummary = ({
   currentDate = new Date(),
   paidFeeMonths = [],
   paidLateFee = 0,
+  excludedFeeMonths = [],
 }) => {
   // à¤ªà¤¹à¤²à¥‡ waiver à¤•à¥‡ à¤¬à¤¿à¤¨à¤¾ original late fee à¤¨à¤¿à¤•à¤¾à¤²à¥‡à¤‚
   const originalDetails =
@@ -1528,7 +1785,8 @@ const getLateFeeSummary = ({
       currentDate,
       paidFeeMonths,
       student.feeDiscountType || "NONE",
-      []
+      [],
+      excludedFeeMonths
     );
 
   const waiverByMonth = new Map();
@@ -1715,6 +1973,7 @@ const calculateFeeByHead = async ({
     selectedHeads = [
       "ADMISSION",
       "MONTHLY",
+      "BUS",
       "EXAM",
       "SPORT",
       "COMPUTER",
@@ -1760,7 +2019,7 @@ const calculateFeeByHead = async ({
   // Valid Fee Heads
   // ===================================================
 
-  const standardFeeHeads = [
+  const academicFeeHeads = [
     "ADMISSION",
     "MONTHLY",
     "EXAM",
@@ -1769,6 +2028,11 @@ const calculateFeeByHead = async ({
     "FUNCTION",
     "SMART_CLASS",
     "OTHER",
+  ];
+
+  const standardFeeHeads = [
+    ...academicFeeHeads,
+    "BUS",
   ];
 
   const validHeads = [
@@ -1879,6 +2143,25 @@ const calculateFeeByHead = async ({
     new Date();
 
   // ===================================================
+  // Global Monthly Fee Waivers
+  // ===================================================
+
+  const monthlyFeeWaiverContext =
+    await getActiveMonthlyFeeWaiverContext(
+      feeStartDate,
+      currentDate
+    );
+
+  const waivedMonthlyFeeMonths =
+    monthlyFeeWaiverContext
+      .waivedMonthKeys;
+
+  const waivedMonthlyFeeMonthSet =
+    new Set(
+      waivedMonthlyFeeMonths
+    );
+
+  // ===================================================
   // Promotion Helpers
   // ===================================================
 
@@ -1924,7 +2207,7 @@ const calculateFeeByHead = async ({
 
     for (
       const head of
-        standardFeeHeads
+        academicFeeHeads
     ) {
       const fieldName =
         feeFieldByHead[head];
@@ -1976,7 +2259,7 @@ const calculateFeeByHead = async ({
     ) {
       for (
         const head of
-          standardFeeHeads
+          academicFeeHeads
       ) {
         fees[
           feeFieldByHead[head]
@@ -2076,6 +2359,8 @@ const calculateFeeByHead = async ({
       student,
       feeStartDate,
       currentDate,
+      waivedMonths:
+        waivedMonthlyFeeMonths,
     });
 
   const accruedMonths =
@@ -2084,6 +2369,21 @@ const calculateFeeByHead = async ({
 
   const monthlyDetails =
     monthlyCalculation.details;
+
+  const busCalculation =
+    calculateAccruedBusFee({
+      student,
+      feeStartDate,
+      currentDate,
+      waivedMonths:
+        waivedMonthlyFeeMonths,
+    });
+
+  const accruedBusMonths =
+    busCalculation.accruedMonths;
+
+  const busDetails =
+    busCalculation.details;
 
   // ===================================================
   // Lump Sum Check
@@ -2201,6 +2501,26 @@ const calculateFeeByHead = async ({
       monthlyTotal.toFixed(2)
     );
 
+  const hasUncoveredBusPeriod =
+    getBusFacilityPeriods({
+      student,
+      feeStartDate,
+    }).some(
+      (period) =>
+        period
+          .coveredByExistingLumpSum ===
+          false
+    );
+
+  const busTotal =
+    activeLumpSum &&
+    !hasUncoveredBusPeriod
+      ? 0
+      : Number(
+        busCalculation.total
+          .toFixed(2)
+      );
+
   // ===================================================
   // Cumulative Promotion Fees
   // ===================================================
@@ -2226,7 +2546,7 @@ const calculateFeeByHead = async ({
 
     for (
       const head of
-        standardFeeHeads
+        academicFeeHeads
     ) {
       const fieldName =
         feeFieldByHead[head];
@@ -2267,9 +2587,30 @@ const calculateFeeByHead = async ({
           true
         );
 
+      /*
+       * Promotion जिस calendar month में effective हुई,
+       * वह month globally waived है तो उस promotion की
+       * monthly fee भी cumulative due में add नहीं होगी।
+       */
+      const promotionMonth =
+        getMonthKey(
+          getPromotionDate(
+            promotion
+          )
+        );
+
+      if (
+        promotionMonth &&
+        waivedMonthlyFeeMonthSet.has(
+          promotionMonth
+        )
+      ) {
+        promotionFees.monthlyFee = 0;
+      }
+
       for (
         const head of
-          standardFeeHeads
+          academicFeeHeads
       ) {
         const fieldName =
           feeFieldByHead[head];
@@ -2326,6 +2667,9 @@ const calculateFeeByHead = async ({
 
         paidLateFee:
           paid.LATE_FEE,
+
+        excludedFeeMonths:
+          waivedMonthlyFeeMonths,
       });
 
   // ===================================================
@@ -2369,6 +2713,11 @@ const calculateFeeByHead = async ({
           promotionHeadTotals
             ?.MONTHLY || 0
         );
+    } else if (
+      head === "BUS"
+    ) {
+      effectiveFee =
+        busTotal;
     } else if (
       promotionHeadTotals
     ) {
@@ -2441,7 +2790,7 @@ const calculateFeeByHead = async ({
   // ===================================================
 
   const isAll =
-    standardFeeHeads.every(
+    academicFeeHeads.every(
       (head) =>
         selectedHeads.includes(
           head
@@ -2574,6 +2923,20 @@ const calculateFeeByHead = async ({
 
     monthlyDetails,
 
+    hasBusFacility:
+      student.hasBusFacility === true,
+
+    monthlyBusFee:
+      Number(student.busFee || 0),
+
+    accruedBusMonths,
+
+    busDetails,
+
+    waivedMonthlyFeeMonths:
+      monthlyFeeWaiverContext
+        .waivers,
+
     feeDiscountType:
       student.feeDiscountType,
 
@@ -2649,7 +3012,11 @@ const calculateLumpSumDetails = async (
   // -------------------------------------------------
 
   if (
-    discountType === "RTE"
+    discountType === "RTE" &&
+    !(
+      student.hasBusFacility === true &&
+      Number(student.busFee || 0) > 0
+    )
   ) {
     return {
       eligible: false,
@@ -2668,6 +3035,18 @@ const calculateLumpSumDetails = async (
 
       normalMonthlyFee: 0,
 
+      hasBusFacility:
+        student.hasBusFacility === true,
+
+      monthlyBusFee:
+        Number(student.busFee || 0),
+
+      remainingBusMonths: 0,
+
+      remainingBusFee: 0,
+
+      busFeeSchedule: [],
+
       remainingMonthlyAmount: 0,
 
       remainingOneTimeFees: 0,
@@ -2679,6 +3058,8 @@ const calculateLumpSumDetails = async (
       discountedMonthlyAmount: 0,
 
       lumpSumAmount: 0,
+
+      waivedMonthlyFeeMonths: [],
     };
   }
 
@@ -2725,6 +3106,18 @@ const calculateLumpSumDetails = async (
 
       normalMonthlyFee: 0,
 
+      hasBusFacility:
+        student.hasBusFacility === true,
+
+      monthlyBusFee:
+        Number(student.busFee || 0),
+
+      remainingBusMonths: 0,
+
+      remainingBusFee: 0,
+
+      busFeeSchedule: [],
+
       remainingMonthlyAmount: 0,
 
       remainingOneTimeFees: 0,
@@ -2736,6 +3129,8 @@ const calculateLumpSumDetails = async (
       discountedMonthlyAmount: 0,
 
       lumpSumAmount: 0,
+
+      waivedMonthlyFeeMonths: [],
     };
   }
 
@@ -2781,6 +3176,16 @@ const calculateLumpSumDetails = async (
       : academicYearStartDate;
 
   // -------------------------------------------------
+  // Global Monthly Fee Waivers
+  // -------------------------------------------------
+
+  const monthlyFeeWaiverContext =
+    await getActiveMonthlyFeeWaiverContext(
+      effectiveStartDate,
+      academicYearEnd
+    );
+
+  // -------------------------------------------------
   // Promotion-Aware Academic Fee Schedule
   // -------------------------------------------------
 
@@ -2791,11 +3196,29 @@ const calculateLumpSumDetails = async (
         effectiveStartDate,
       currentDate:
         academicYearEnd,
+      waivedMonths:
+        monthlyFeeWaiverContext
+          .waivedMonthKeys,
     });
 
   const monthlyFeeSchedule =
     academicMonthlyCalculation
       .details;
+
+  const academicBusCalculation =
+    calculateAccruedBusFee({
+      student,
+      feeStartDate:
+        effectiveStartDate,
+      currentDate:
+        academicYearEnd,
+      waivedMonths:
+        monthlyFeeWaiverContext
+          .waivedMonthKeys,
+    });
+
+  const busFeeSchedule =
+    academicBusCalculation.details;
 
   const totalAcademicMonths =
     academicMonthlyCalculation
@@ -2828,17 +3251,34 @@ const calculateLumpSumDetails = async (
   const today =
     new Date(currentDate);
 
+  const todayMonthKey =
+    getCalendarMonthKey(
+      today
+    );
+
+  /*
+   * Waived months monthlyFeeSchedule में नहीं हैं,
+   * इसलिए passedMonths भी केवल chargeable months हैं।
+   */
   const passedMonths =
-    (
-      today.getFullYear() -
-      effectiveStartDate.getFullYear()
-    ) *
-    12 +
-    (
-      today.getMonth() -
-      effectiveStartDate.getMonth()
-    ) +
-    1;
+    monthlyFeeSchedule.filter(
+      (monthDetail) => {
+        const detailMonth =
+          String(
+            monthDetail.feeMonth ||
+            monthDetail.month ||
+            ""
+          ).trim();
+
+        return (
+          MONTH_KEY_PATTERN.test(
+            detailMonth
+          ) &&
+          detailMonth <=
+            todayMonthKey
+        );
+      }
+    ).length;
 
   // -------------------------------------------------
   // Already Paid Months
@@ -2919,6 +3359,69 @@ const calculateLumpSumDetails = async (
     );
 
   // -------------------------------------------------
+  // Remaining Bus Fee
+  // No student or lump-sum discount applies to BUS.
+  // -------------------------------------------------
+
+  const busPaid =
+    Number(paid.BUS || 0);
+
+  const remainingBusFee =
+    Number(
+      Math.max(
+        academicBusCalculation.total -
+        busPaid,
+        0
+      ).toFixed(2)
+    );
+
+  let remainingBusPaid =
+    Math.max(busPaid, 0);
+
+  let alreadyPaidBusMonths = 0;
+
+  for (
+    const monthDetail of
+    busFeeSchedule
+  ) {
+    const monthBusFee =
+      Number(
+        monthDetail.effectiveBusFee ||
+        0
+      );
+
+    if (monthBusFee <= 0) {
+      alreadyPaidBusMonths += 1;
+
+      continue;
+    }
+
+    if (
+      remainingBusPaid + 0.01 <
+      monthBusFee
+    ) {
+      break;
+    }
+
+    remainingBusPaid =
+      Math.max(
+        remainingBusPaid -
+        monthBusFee,
+        0
+      );
+
+    alreadyPaidBusMonths += 1;
+  }
+
+  const remainingBusMonths =
+    Math.max(
+      academicBusCalculation
+        .accruedMonths -
+      alreadyPaidBusMonths,
+      0
+    );
+
+  // -------------------------------------------------
   // One-Time Fees
   // -------------------------------------------------
 
@@ -2967,6 +3470,7 @@ const calculateLumpSumDetails = async (
     Number(
       (
         remainingMonthlyAmount +
+        remainingBusFee +
         remainingOneTimeFees
       ).toFixed(2)
     );
@@ -3020,6 +3524,7 @@ const calculateLumpSumDetails = async (
     Number(
       Math.max(
         discountedMonthlyAmount +
+        remainingBusFee +
         remainingOneTimeFees,
         0
       ).toFixed(2)
@@ -3057,9 +3562,27 @@ const calculateLumpSumDetails = async (
 
     normalMonthlyFee,
 
+    hasBusFacility:
+      student.hasBusFacility === true,
+
+    monthlyBusFee:
+      Number(student.busFee || 0),
+
     monthlyFeeSchedule,
 
+    waivedMonthlyFeeMonths:
+      monthlyFeeWaiverContext
+        .waivers,
+
     remainingMonthlyAmount,
+
+    alreadyPaidBusMonths,
+
+    remainingBusMonths,
+
+    remainingBusFee,
+
+    busFeeSchedule,
 
     remainingOneTimeFees,
 
@@ -3181,6 +3704,7 @@ const buildFeePaymentData = ({
     feeBreakdown:
       feeBreakdown || {
         MONTHLY: 0,
+        BUS: 0,
         ADMISSION: 0,
         EXAM: 0,
         SPORT: 0,
@@ -3806,6 +4330,7 @@ const collectFee = async (
 
   const normalizedFeeBreakdown = {
     MONTHLY: 0,
+    BUS: 0,
     ADMISSION: 0,
     EXAM: 0,
     SPORT: 0,
@@ -3840,6 +4365,7 @@ const collectFee = async (
 
     const allowedHeads = [
       "MONTHLY",
+      "BUS",
       "ADMISSION",
       "EXAM",
       "SPORT",
@@ -4011,6 +4537,13 @@ const collectFee = async (
           ? Number(
             student.openingDue || 0
           )
+          : finalFeeHead ===
+              "BUS"
+            ? Number(
+              currentFeeCalculation
+                .feeBreakdown
+                ?.BUS || 0
+            )
           : getEffectiveFeeHeadAmount(
             student,
             finalFeeHead
@@ -4885,6 +5418,7 @@ const createOnlineQR = async (
 
   const normalizedFeeBreakdown = {
     MONTHLY: 0,
+    BUS: 0,
     ADMISSION: 0,
     EXAM: 0,
     SPORT: 0,
@@ -5055,6 +5589,13 @@ const createOnlineQR = async (
           ? Number(
             student.openingDue || 0
           )
+          : finalFeeHead ===
+              "BUS"
+            ? Number(
+              currentFeeCalculation
+                .feeBreakdown
+                ?.BUS || 0
+            )
           : getEffectiveFeeHeadAmount(
             student,
             finalFeeHead
@@ -5543,6 +6084,7 @@ const checkOnlinePayment =
 
     const paymentFeeBreakdown = {
       MONTHLY: 0,
+      BUS: 0,
       ADMISSION: 0,
       EXAM: 0,
       SPORT: 0,
@@ -5674,6 +6216,7 @@ const checkOnlinePayment =
           "FUNCTION",
           "SMART_CLASS",
           "OTHER",
+          "BUS",
           "MONTHLY",
           "LATE_FEE",
         ];
@@ -6015,7 +6558,7 @@ module.exports = {
   // Fee Calculate API
   // =========================================
   calculateFeeByHead,
+  waiveMonthlyFeeForAllStudents,
   waiveLateFee,
   revokeLateFeeWaiver,
 };
-

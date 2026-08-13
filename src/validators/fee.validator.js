@@ -1,5 +1,9 @@
 const { body } = require("express-validator");
 
+const {
+  ACADEMIC_MONTHS,
+} = require("../utils/monthlyFeeWaiver");
+
 // =====================================================
 // Allowed Fee Heads
 // =====================================================
@@ -7,6 +11,7 @@ const { body } = require("express-validator");
 const ALLOWED_FEE_HEADS = [
   "ADMISSION",
   "MONTHLY",
+  "BUS",
   "EXAM",
   "SPORT",
   "COMPUTER",
@@ -122,6 +127,79 @@ const onlineQRValidation = [
 ];
 
 // =====================================================
+// Global Monthly Fee Waiver Validation
+// ADMIN ONLY
+// =====================================================
+
+const monthlyFeeWaiverValidation = [
+  body("academicYear")
+    .isString()
+    .withMessage(
+      "Academic year must be a string"
+    )
+    .trim()
+    .matches(/^\d{4}-\d{4}$/)
+    .withMessage(
+      "Academic year must be in YYYY-YYYY format"
+    )
+    .custom((value) => {
+      const [startYear, endYear] =
+        value
+          .split("-")
+          .map(Number);
+
+      if (
+        endYear !==
+        startYear + 1
+      ) {
+        throw new Error(
+          "Academic year end must be the next year"
+        );
+      }
+
+      return true;
+    }),
+
+  body("months")
+    .isArray({
+      min: 1,
+      max: 12,
+    })
+    .withMessage(
+      "Months must contain between 1 and 12 values"
+    ),
+
+  body("months.*")
+    .isString()
+    .withMessage(
+      "Each month must be a string"
+    )
+    .customSanitizer((value) =>
+      String(value)
+        .trim()
+        .toUpperCase()
+    )
+    .isIn(ACADEMIC_MONTHS)
+    .withMessage(
+      "Invalid academic month"
+    ),
+
+  body("reason")
+    .isString()
+    .withMessage(
+      "Waiver reason must be a string"
+    )
+    .trim()
+    .isLength({
+      min: 3,
+      max: 250,
+    })
+    .withMessage(
+      "Waiver reason must contain 3 to 250 characters"
+    ),
+];
+
+// =====================================================
 // Export
 // =====================================================
 
@@ -130,4 +208,5 @@ module.exports = {
   ALLOWED_PAYMENT_TYPES,
   collectFeeValidation,
   onlineQRValidation,
+  monthlyFeeWaiverValidation,
 };

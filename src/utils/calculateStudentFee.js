@@ -2,6 +2,10 @@
 // Calculate Fee Start Date
 // =====================================
 
+const {
+  normalizeWaivedMonthKeys,
+} = require("./monthlyFeeWaiver");
+
 const calculateFeeStartDate = (admissionDate) => {
   const date = new Date(admissionDate);
 
@@ -346,7 +350,8 @@ const calculateMonthWiseLateFee = (
   currentDate = new Date(),
   paidFeeMonths = [],
   feeDiscountType = "NONE",
-  lateFeeWaivers = []
+  lateFeeWaivers = [],
+  excludedFeeMonths = []
 ) => {
   const finalDiscountType =
     validateFeeDiscountType(
@@ -400,6 +405,15 @@ const calculateMonthWiseLateFee = (
       )
         ? paidFeeMonths
         : []
+    );
+
+  /*
+   * जिन months की monthly fee globally waived है,
+   * उन months पर late fee भी generate नहीं होगी।
+   */
+  const excludedMonthKeys =
+    normalizeWaivedMonthKeys(
+      excludedFeeMonths
     );
 
   // Normalize month-wise waivers
@@ -474,6 +488,21 @@ const calculateMonthWiseLateFee = (
         month + 1
       ).padStart(2, "0")}`;
 
+    if (
+      excludedMonthKeys.has(
+        monthKey
+      )
+    ) {
+      currentMonth =
+        new Date(
+          year,
+          month + 1,
+          1
+        );
+
+      continue;
+    }
+
     const isPaid =
       paidMonths.has(
         monthKey
@@ -544,7 +573,8 @@ const calculateLateFee = (
   currentDate = new Date(),
   paidFeeMonths = [],
   feeDiscountType = "NONE",
-  lateFeeWaivers = []
+  lateFeeWaivers = [],
+  excludedFeeMonths = []
 ) => {
   const monthWiseLateFee =
     calculateMonthWiseLateFee(
@@ -552,7 +582,8 @@ const calculateLateFee = (
       currentDate,
       paidFeeMonths,
       feeDiscountType,
-      lateFeeWaivers
+      lateFeeWaivers,
+      excludedFeeMonths
     );
 
   return monthWiseLateFee.reduce(
@@ -714,7 +745,8 @@ const calculateDueFee = (
   paidFeeMonths = [],
   lateFeeWaiverType = "NONE",
   lateFeeWaiverValue = 0,
-  lateFeeWaivers = []
+  lateFeeWaivers = [],
+  excludedFeeMonths = []
 ) => {
   const finalDiscountType =
     validateFeeDiscountType(
@@ -735,7 +767,8 @@ const calculateDueFee = (
       currentDate,
       paidFeeMonths,
       finalDiscountType,
-      lateFeeWaivers
+      lateFeeWaivers,
+      excludedFeeMonths
     );
 
   // Total late fee before waiver

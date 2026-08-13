@@ -7,6 +7,7 @@ const mongoose = require("mongoose");
 const ALLOWED_FEE_HEADS = [
   "ADMISSION",
   "MONTHLY",
+  "BUS",
   "EXAM",
   "SPORT",
   "COMPUTER",
@@ -106,6 +107,12 @@ const feeSchema = new mongoose.Schema(
 
     feeBreakdown: {
       MONTHLY: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      BUS: {
         type: Number,
         default: 0,
         min: 0,

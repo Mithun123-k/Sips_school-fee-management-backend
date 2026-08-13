@@ -19,6 +19,7 @@ const validate =
 const {
   collectFeeValidation,
   onlineQRValidation,
+  monthlyFeeWaiverValidation,
 } =
   require("../validators/fee.validator");
 
@@ -49,6 +50,36 @@ router.delete(
   authorize("ADMIN"),
 
   feeController.revokeLateFeeWaiver
+);
+
+// =====================================================
+// Global Monthly Fee Waiver
+// ADMIN ONLY
+// =====================================================
+//
+// POST /api/fees/monthly-fee/waive
+//
+// {
+//   "academicYear": "2026-2027",
+//   "months": ["MAY", "JUNE"],
+//   "reason": "Summer vacation"
+// }
+//
+// =====================================================
+
+router.post(
+  "/monthly-fee/waive",
+
+  auth,
+
+  authorize("ADMIN"),
+
+  monthlyFeeWaiverValidation,
+
+  validate,
+
+  feeController
+    .waiveMonthlyFeeForAllStudents
 );
 
 

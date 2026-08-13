@@ -1,4 +1,5 @@
 const Student = require("../models/Student");
+const mongoose = require("mongoose");
 
 // =====================================================
 // Allowed Discount Types
@@ -809,6 +810,175 @@ const updateDueFee = async (
 };
 
 // =====================================================
+// Stop Bus Facility And Record Cash Refund
+// =====================================================
+
+const stopBusFacility = async ({
+  studentId,
+  busFacilityHistory,
+  busFacilityStopEffectiveFrom,
+  busFacilityStoppedAt,
+  busFacilityStoppedBy,
+  paidFee,
+  refund = null,
+}) => {
+  const update = {
+    $set: {
+      hasBusFacility: false,
+      busFee: 0,
+      busFacilityHistory,
+      busFacilityStartEffectiveFrom:
+        null,
+      busFacilityStopEffectiveFrom,
+      busFacilityStoppedAt,
+      busFacilityStoppedBy,
+      paidFee:
+        Number(paidFee.toFixed(2)),
+      updatedBy:
+        busFacilityStoppedBy,
+    },
+  };
+
+  if (refund) {
+    update.$push = {
+      busFeeRefunds: refund,
+    };
+  }
+
+  return await Student.findOneAndUpdate(
+    {
+      studentId,
+      isDeleted: false,
+      status: "ACTIVE",
+      hasBusFacility: true,
+    },
+    update,
+    {
+      new: true,
+      runValidators: true,
+    }
+  );
+};
+
+// =====================================================
+// Start Or Restart Bus Facility
+// =====================================================
+
+const startBusFacility = async ({
+  studentId,
+  busFee,
+  busFacilityStartEffectiveFrom,
+  period,
+  updatedBy,
+}) => {
+  return await Student.findOneAndUpdate(
+    {
+      studentId,
+      isDeleted: false,
+      status: "ACTIVE",
+      hasBusFacility: false,
+    },
+    {
+      $set: {
+        hasBusFacility: true,
+        busFee:
+          Number(busFee.toFixed(2)),
+        busFacilityStartEffectiveFrom,
+        busFacilityStopEffectiveFrom:
+          null,
+        busFacilityStoppedAt: null,
+        busFacilityStoppedBy: null,
+        updatedBy,
+      },
+      $push: {
+        busFacilityHistory: period,
+      },
+    },
+    {
+      new: true,
+      runValidators: true,
+    }
+  );
+};
+
+// =====================================================
+// Get Bus Refund Receipt
+// =====================================================
+
+const getBusRefundReceipt = async (
+  identifier
+) => {
+  const value =
+    String(identifier || "").trim();
+
+  if (!value) {
+    return null;
+  }
+
+  const refundConditions = [
+    {
+      "busFeeRefunds.refundNo":
+        value,
+    },
+  ];
+
+  if (
+    mongoose.isValidObjectId(
+      value
+    )
+  ) {
+    refundConditions.push({
+      "busFeeRefunds._id": value,
+    });
+  }
+
+  const student =
+    await Student.findOne({
+      isDeleted: false,
+      $or: refundConditions,
+    })
+      .select(
+        "studentId admissionNo name fatherName className section busFeeRefunds"
+      )
+      .populate(
+        "busFeeRefunds.refundedBy",
+        "name role"
+      );
+
+  if (!student) {
+    return null;
+  }
+
+  const refund =
+    student.busFeeRefunds.find(
+      (entry) =>
+        entry.refundNo === value ||
+        String(entry._id) === value
+    );
+
+  if (!refund) {
+    return null;
+  }
+
+  return {
+    ...refund.toObject(),
+    student: {
+      _id: student._id,
+      studentId:
+        student.studentId,
+      admissionNo:
+        student.admissionNo,
+      name: student.name,
+      fatherName:
+        student.fatherName,
+      className:
+        student.className,
+      section: student.section,
+    },
+  };
+};
+
+// =====================================================
 // Get Students By Class
 // =====================================================
 
@@ -1180,6 +1350,12 @@ module.exports = {
   updateFee,
 
   updateDueFee,
+
+  stopBusFacility,
+
+  startBusFacility,
+
+  getBusRefundReceipt,
 
   getStudentsByClass,
 

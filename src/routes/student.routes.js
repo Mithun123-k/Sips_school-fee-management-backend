@@ -18,6 +18,9 @@ const {
   createStudentValidation,
   updateStudentValidation,
   promoteStudentValidation,
+  busFacilityStartValidation,
+  busFacilityStopPreviewValidation,
+  busFacilityStopValidation,
 } = require("../validators/student.validator");
 
 // =====================================================
@@ -83,6 +86,62 @@ router.get(
     "RECEPTIONIST"
   ),
   studentController.getAllStudents
+);
+
+// =====================================================
+// BUS FACILITY STOP + CASH REFUND
+// =====================================================
+
+router.post(
+  "/:studentId/bus-facility/start",
+  auth,
+  authorize("ADMIN"),
+  busFacilityStartValidation,
+  validate,
+  studentController
+    .startBusFacility
+);
+
+router.post(
+  "/:studentId/bus-facility/stop-preview",
+  auth,
+  authorize("ADMIN"),
+  busFacilityStopPreviewValidation,
+  validate,
+  studentController
+    .previewBusFacilityCashRefund
+);
+
+router.post(
+  "/:studentId/bus-facility/stop",
+  auth,
+  authorize("ADMIN"),
+  busFacilityStopValidation,
+  validate,
+  studentController
+    .stopBusFacilityWithCashRefund
+);
+
+router.get(
+  "/:studentId/bus-fee-refunds",
+  auth,
+  authorize(
+    "ADMIN",
+    "RECEPTIONIST"
+  ),
+  studentController
+    .getBusFeeRefundHistory
+);
+
+router.get(
+  "/bus-fee-refunds/receipt/:identifier",
+  auth,
+  authorize(
+    "ADMIN",
+    "RECEPTIONIST"
+  ),
+  studentController
+    .getBusFeeRefundReceipt
 );
 
 // =====================================================

@@ -190,3 +190,133 @@ exports.promoteStudent =
       );
     }
   );
+
+// =====================================================
+// Start Or Restart Bus Facility
+// ADMIN ONLY
+// =====================================================
+
+exports.startBusFacility =
+  asyncHandler(
+    async (req, res) => {
+      const result =
+        await studentService
+          .startBusFacility(
+            req.params.studentId,
+            req.body,
+            req.user.id
+          );
+
+      return sendResponse(
+        res,
+        200,
+        true,
+        result.startType ===
+          "RESTART"
+          ? "Bus facility restarted successfully"
+          : "Bus facility started successfully",
+        result
+      );
+    }
+  );
+
+// =====================================================
+// Preview Bus Stop + CASH Refund
+// ADMIN ONLY
+// =====================================================
+
+exports.previewBusFacilityCashRefund =
+  asyncHandler(
+    async (req, res) => {
+      const preview =
+        await studentService
+          .previewBusFacilityCashRefund(
+            req.params.studentId,
+            req.body
+          );
+
+      return sendResponse(
+        res,
+        200,
+        true,
+        "Bus facility stop preview calculated successfully",
+        preview
+      );
+    }
+  );
+
+// =====================================================
+// Stop Bus Facility + Complete CASH Refund
+// ADMIN ONLY
+// =====================================================
+
+exports.stopBusFacilityWithCashRefund =
+  asyncHandler(
+    async (req, res) => {
+      const result =
+        await studentService
+          .stopBusFacilityWithCashRefund(
+            req.params.studentId,
+            req.body,
+            req.user.id
+          );
+
+      return sendResponse(
+        res,
+        200,
+        true,
+        result.refundAmount > 0
+          ? "Bus facility stopped and CASH refund completed successfully"
+          : "Bus facility stopped successfully; no advance BUS fee was refundable",
+        result
+      );
+    }
+  );
+
+// =====================================================
+// Bus Fee Refund History
+// ADMIN / RECEPTIONIST
+// =====================================================
+
+exports.getBusFeeRefundHistory =
+  asyncHandler(
+    async (req, res) => {
+      const history =
+        await studentService
+          .getBusFeeRefundHistory(
+            req.params.studentId
+          );
+
+      return sendResponse(
+        res,
+        200,
+        true,
+        "Bus fee refund history fetched successfully",
+        history
+      );
+    }
+  );
+
+// =====================================================
+// Bus Fee Refund Receipt
+// ADMIN / RECEPTIONIST
+// =====================================================
+
+exports.getBusFeeRefundReceipt =
+  asyncHandler(
+    async (req, res) => {
+      const receipt =
+        await studentService
+          .getBusFeeRefundReceipt(
+            req.params.identifier
+          );
+
+      return sendResponse(
+        res,
+        200,
+        true,
+        "Bus fee refund receipt fetched successfully",
+        receipt
+      );
+    }
+  );

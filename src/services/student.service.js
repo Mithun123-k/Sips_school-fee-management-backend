@@ -2360,12 +2360,17 @@ const studentRepository =
 const feeRepository =
   require("../repositories/fee.repository");
 
+const monthlyFeeWaiverRepository =
+  require("../repositories/monthlyFeeWaiver.repository");
+
 const feeStructureRepository =
   require("../repositories/feeStructure.repository");
 
 const generateStudentId =
   require("../utils/generateStudentId");
 const generateAdmissionNo = require("../utils/generateAdmission");
+const generateBusRefundNo =
+  require("../utils/generateBusRefundNo");
 const {
   getLumpSumPreview,
   calculateFeeByHead,
@@ -2376,6 +2381,14 @@ const {
   getNextFeePeriodStart,
   getFeeSnapshotForDate,
 } = require("../utils/studentPromotionFee");
+
+const {
+  calculateAccruedBusFee,
+} = require("../utils/calculateBusFee");
+
+const {
+  getCalendarMonthKey,
+} = require("../utils/monthlyFeeWaiver");
 
 // =====================================================
 // Constants
@@ -3343,6 +3356,8 @@ const createStudent = async (
 
     admissionFee,
     monthlyFee,
+    hasBusFacility,
+    busFee,
     examFee,
     sportFee,
     computerFee,
@@ -3441,6 +3456,34 @@ const createStudent = async (
       smartClassFee,
       otherCharges,
     });
+
+  const finalHasBusFacility =
+    hasBusFacility === true ||
+    hasBusFacility === "true";
+
+  const finalBusFee =
+    normalizeFeeValue(
+      busFee,
+      "Bus fee"
+    );
+
+  if (
+    finalHasBusFacility &&
+    finalBusFee <= 0
+  ) {
+    throw new Error(
+      "Bus fee must be greater than zero when bus facility is enabled"
+    );
+  }
+
+  if (
+    !finalHasBusFacility &&
+    finalBusFee !== 0
+  ) {
+    throw new Error(
+      "Bus fee must be zero when bus facility is disabled"
+    );
+  }
 
   // ===================================================
   // Opening Due
@@ -3642,6 +3685,41 @@ const createStudent = async (
       monthlyFee:
         feeHeads.monthlyFee,
 
+      hasBusFacility:
+        finalHasBusFacility,
+
+      busFee:
+        finalBusFee,
+
+      busFacilityStartEffectiveFrom:
+        finalHasBusFacility
+          ? feeStartDate
+          : null,
+
+      busFacilityHistory:
+        finalHasBusFacility
+          ? [
+            {
+              busFee:
+                finalBusFee,
+              effectiveFrom:
+                feeStartDate,
+              effectiveTo: null,
+              status: "ACTIVE",
+              startType:
+                "ADMISSION",
+              firstMonthProrated:
+                false,
+              coveredByExistingLumpSum:
+                true,
+              startedBy:
+                userId,
+              startedAt:
+                new Date(),
+            },
+          ]
+          : [],
+
       examFee:
         feeHeads.examFee,
 
@@ -3806,6 +3884,14 @@ const updateStudent = async (
   delete updateData.isDeleted;
   delete updateData.createdBy;
   delete updateData.classPromotionHistory;
+  delete updateData.hasBusFacility;
+  delete updateData.busFee;
+  delete updateData.busFacilityHistory;
+  delete updateData.busFacilityStartEffectiveFrom;
+  delete updateData.busFacilityStopEffectiveFrom;
+  delete updateData.busFacilityStoppedAt;
+  delete updateData.busFacilityStoppedBy;
+  delete updateData.busFeeRefunds;
   delete updateData.lateFeeWaivers;
   delete updateData.lateFeeWaived;
   delete updateData.lateFeeWaiverAmount;
@@ -4772,6 +4858,1296 @@ const getCurrentDueFee = async (
 };
 
 // =====================================================
+// BUS Facility Stop + CASH Refund Helpers
+// =====================================================
+
+const normalizeBusStopEffectiveFrom = (
+  value,
+  currentDate = new Date()
+) => {
+  const input =
+    String(value || "").trim();
+
+  const match =
+    input.match(
+      /^(\d{4})-(\d{2})-(\d{2})$/
+    );
+
+  if (!match) {
+    throw new Error(
+      "Bus stop effective date must be in YYYY-MM-DD format"
+    );
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+
+  const effectiveFrom =
+    new Date(
+      year,
+      month - 1,
+      day,
+      0,
+      0,
+      0,
+      0
+    );
+
+  if (
+    effectiveFrom.getFullYear() !==
+      year ||
+    effectiveFrom.getMonth() !==
+      month - 1 ||
+    effectiveFrom.getDate() !== day
+  ) {
+    throw new Error(
+      "Invalid bus stop effective date"
+    );
+  }
+
+  const now =
+    new Date(currentDate);
+
+  if (
+    Number.isNaN(now.getTime())
+  ) {
+    throw new Error(
+      "Invalid current date"
+    );
+  }
+
+  const nextMonthStart =
+    new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      1,
+      0,
+      0,
+      0,
+      0
+    );
+
+  if (
+    effectiveFrom.getTime() !==
+    nextMonthStart.getTime()
+  ) {
+    throw new Error(
+      `Bus facility can only stop from next month: ${nextMonthStart.getFullYear()}-${String(
+        nextMonthStart.getMonth() + 1
+      ).padStart(2, "0")}-01`
+    );
+  }
+
+  return effectiveFrom;
+};
+
+const getBusRefundAcademicYearEnd = (
+  effectiveFrom
+) => {
+  const date =
+    new Date(effectiveFrom);
+
+  const academicStartYear =
+    date.getMonth() >= 3
+      ? date.getFullYear()
+      : date.getFullYear() - 1;
+
+  return new Date(
+    academicStartYear + 1,
+    2,
+    31,
+    23,
+    59,
+    59,
+    999
+  );
+};
+
+const getGrossPaidBusFee = (
+  history = []
+) => {
+  const total =
+    (
+      Array.isArray(history)
+        ? history
+        : []
+    ).reduce(
+      (sum, fee) => {
+        if (
+          String(
+            fee?.paymentStatus || ""
+          )
+            .trim()
+            .toUpperCase() !==
+          "SUCCESS"
+        ) {
+          return sum;
+        }
+
+        const feeBreakdown =
+          typeof fee?.feeBreakdown
+            ?.toObject === "function"
+            ? fee.feeBreakdown
+              .toObject()
+            : fee?.feeBreakdown;
+
+        const allocatedBusFee =
+          Number(
+            feeBreakdown?.BUS || 0
+          );
+
+        if (
+          Number.isFinite(
+            allocatedBusFee
+          ) &&
+          allocatedBusFee > 0
+        ) {
+          return sum +
+            allocatedBusFee;
+        }
+
+        if (
+          String(fee?.feeHead || "")
+            .trim()
+            .toUpperCase() !== "BUS"
+        ) {
+          return sum;
+        }
+
+        const amount =
+          Number(fee?.amount || 0);
+
+        return (
+          Number.isFinite(amount) &&
+          amount > 0
+        )
+          ? sum + amount
+          : sum;
+      },
+      0
+    );
+
+  return Number(total.toFixed(2));
+};
+
+const getGrossSuccessfulPaymentTotal = (
+  history = []
+) => {
+  const total =
+    (
+      Array.isArray(history)
+        ? history
+        : []
+    ).reduce(
+      (sum, fee) => {
+        if (
+          String(
+            fee?.paymentStatus || ""
+          )
+            .trim()
+            .toUpperCase() !==
+          "SUCCESS"
+        ) {
+          return sum;
+        }
+
+        const amount =
+          Number(fee?.amount || 0);
+
+        return (
+          Number.isFinite(amount) &&
+          amount > 0
+        )
+          ? sum + amount
+          : sum;
+      },
+      0
+    );
+
+  return Number(total.toFixed(2));
+};
+
+const getCompletedBusRefundTotal = (
+  student
+) => {
+  const total =
+    (
+      Array.isArray(
+        student?.busFeeRefunds
+      )
+        ? student.busFeeRefunds
+        : []
+    ).reduce(
+      (sum, refund) => {
+        const amount =
+          Number(refund?.amount || 0);
+
+        if (
+          String(refund?.status || "")
+            .trim()
+            .toUpperCase() !==
+              "COMPLETED" ||
+          !Number.isFinite(amount) ||
+          amount <= 0
+        ) {
+          return sum;
+        }
+
+        return sum + amount;
+      },
+      0
+    );
+
+  return Number(total.toFixed(2));
+};
+
+const getBusWaiverContext = async (
+  startDate,
+  endDate
+) => {
+  const waivers =
+    await monthlyFeeWaiverRepository
+      .getActiveMonthlyFeeWaivers({
+        startMonth:
+          getCalendarMonthKey(
+            startDate
+          ),
+        endMonth:
+          getCalendarMonthKey(
+            endDate
+          ),
+      });
+
+  return {
+    monthKeys:
+      waivers.map(
+        (waiver) => waiver.month
+      ),
+    waivers:
+      waivers.map((waiver) => ({
+        academicYear:
+          waiver.academicYear,
+        month: waiver.month,
+        monthName:
+          waiver.monthName,
+        reason: waiver.reason,
+      })),
+  };
+};
+
+// =====================================================
+// Start Or Restart BUS Facility
+// =====================================================
+
+const normalizeBusStartEffectiveFrom = (
+  value,
+  currentDate = new Date()
+) => {
+  const input =
+    String(value || "").trim();
+
+  const match =
+    input.match(
+      /^(\d{4})-(\d{2})-(\d{2})$/
+    );
+
+  if (!match) {
+    throw new Error(
+      "Bus start effective date must be in YYYY-MM-DD format"
+    );
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+
+  const effectiveFrom =
+    new Date(
+      year,
+      month - 1,
+      day,
+      0,
+      0,
+      0,
+      0
+    );
+
+  if (
+    effectiveFrom.getFullYear() !==
+      year ||
+    effectiveFrom.getMonth() !==
+      month - 1 ||
+    effectiveFrom.getDate() !== day
+  ) {
+    throw new Error(
+      "Invalid bus start effective date"
+    );
+  }
+
+  const now = new Date(currentDate);
+
+  if (Number.isNaN(now.getTime())) {
+    throw new Error(
+      "Invalid current date"
+    );
+  }
+
+  const currentMonthStart =
+    new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      1,
+      0,
+      0,
+      0,
+      0
+    );
+
+  if (
+    effectiveFrom <
+    currentMonthStart
+  ) {
+    throw new Error(
+      "Bus facility cannot start before the current month"
+    );
+  }
+
+  return effectiveFrom;
+};
+
+const startBusFacility = async (
+  studentId,
+  body = {},
+  userId,
+  currentDate = new Date()
+) => {
+  const protectedFields = [
+    "firstMonthBusFee",
+    "daysInStartMonth",
+    "chargeableDays",
+    "fullMonthlyFeeFrom",
+    "firstMonthProrated",
+    "coveredByExistingLumpSum",
+  ];
+
+  if (
+    protectedFields.some((field) =>
+      Object.prototype
+        .hasOwnProperty.call(
+          body,
+          field
+        )
+    )
+  ) {
+    throw new Error(
+      "First-month BUS fee and proration details are calculated by the server"
+    );
+  }
+
+  const student =
+    await getActiveStudentByStudentId(
+      String(studentId || "")
+        .trim()
+    );
+
+  if (
+    student.hasBusFacility ===
+    true
+  ) {
+    throw new Error(
+      "Student already has an active bus facility"
+    );
+  }
+
+  const busFee =
+    Number(body.busFee);
+
+  if (
+    !Number.isFinite(busFee) ||
+    busFee <= 0
+  ) {
+    throw new Error(
+      "Bus fee must be greater than zero"
+    );
+  }
+
+  const finalBusFee =
+    Number(busFee.toFixed(2));
+
+  const reason =
+    String(body.reason || "")
+      .trim();
+
+  if (
+    reason.length < 3 ||
+    reason.length > 250
+  ) {
+    throw new Error(
+      "Bus start reason must contain 3 to 250 characters"
+    );
+  }
+
+  const effectiveFrom =
+    normalizeBusStartEffectiveFrom(
+      body.effectiveFrom,
+      currentDate
+    );
+
+  const feeStartDate =
+    new Date(student.feeStartDate);
+
+  if (
+    Number.isNaN(
+      feeStartDate.getTime()
+    )
+  ) {
+    throw new Error(
+      "Fee start date is not configured for this student"
+    );
+  }
+
+  const feeStartMonth =
+    new Date(
+      feeStartDate.getFullYear(),
+      feeStartDate.getMonth(),
+      1
+    );
+
+  const busStartMonth =
+    new Date(
+      effectiveFrom.getFullYear(),
+      effectiveFrom.getMonth(),
+      1
+    );
+
+  if (busStartMonth < feeStartMonth) {
+    throw new Error(
+      "Bus facility cannot start before the student's fee start month"
+    );
+  }
+
+  const history =
+    Array.isArray(
+      student.busFacilityHistory
+    )
+      ? student.busFacilityHistory
+      : [];
+
+  const previousPeriods =
+    history
+      .map((period) =>
+        typeof period?.toObject ===
+          "function"
+          ? period.toObject()
+          : { ...period }
+      )
+      .sort(
+        (first, second) =>
+          new Date(
+            first.effectiveFrom
+          ) -
+          new Date(
+            second.effectiveFrom
+          )
+      );
+
+  const latestPeriod =
+    previousPeriods.length > 0
+      ? previousPeriods[
+        previousPeriods.length - 1
+      ]
+      : null;
+
+  if (latestPeriod) {
+    const previousEffectiveTo =
+      latestPeriod.effectiveTo
+        ? new Date(
+          latestPeriod.effectiveTo
+        )
+        : null;
+
+    if (
+      !previousEffectiveTo ||
+      Number.isNaN(
+        previousEffectiveTo
+          .getTime()
+      )
+    ) {
+      throw new Error(
+        "Previous bus facility period is not closed"
+      );
+    }
+
+    if (
+      effectiveFrom <=
+      previousEffectiveTo
+    ) {
+      throw new Error(
+        "Bus restart date must be after the previous bus facility period"
+      );
+    }
+  }
+
+  const daysInStartMonth =
+    new Date(
+      effectiveFrom.getFullYear(),
+      effectiveFrom.getMonth() + 1,
+      0
+    ).getDate();
+
+  const chargeableDays =
+    daysInStartMonth -
+    effectiveFrom.getDate() +
+    1;
+
+  const firstMonthBusFee =
+    Number(
+      (
+        finalBusFee /
+        daysInStartMonth *
+        chargeableDays
+      ).toFixed(2)
+    );
+
+  const fullMonthlyFeeFrom =
+    new Date(
+      effectiveFrom.getFullYear(),
+      effectiveFrom.getMonth() + 1,
+      1,
+      0,
+      0,
+      0,
+      0
+    );
+
+  const startMonth =
+    getCalendarMonthKey(
+      effectiveFrom
+    );
+
+  const waiverContext =
+    await getBusWaiverContext(
+      effectiveFrom,
+      effectiveFrom
+    );
+
+  const isStartMonthWaived =
+    waiverContext.monthKeys
+      .includes(startMonth);
+
+  const startType =
+    previousPeriods.length > 0
+      ? "RESTART"
+      : "LATER_START";
+
+  const startedAt =
+    new Date(currentDate);
+
+  const period = {
+    busFee: finalBusFee,
+    effectiveFrom,
+    effectiveTo: null,
+    status: "ACTIVE",
+    startType,
+    firstMonthProrated:
+      effectiveFrom.getDate() !==
+      1,
+    daysInStartMonth,
+    chargeableDays,
+    firstMonthBusFee,
+    fullMonthlyFeeFrom,
+    coveredByExistingLumpSum:
+      false,
+    startReason: reason,
+    startedBy: userId,
+    startedAt,
+  };
+
+  const updatedStudent =
+    await studentRepository
+      .startBusFacility({
+        studentId:
+          student.studentId,
+        busFee: finalBusFee,
+        busFacilityStartEffectiveFrom:
+          effectiveFrom,
+        period,
+        updatedBy: userId,
+      });
+
+  if (!updatedStudent) {
+    throw new Error(
+      "Bus facility is already active or was changed by another request"
+    );
+  }
+
+  let finalStudent =
+    updatedStudent;
+
+  let dueFeeRefreshPending =
+    false;
+
+  try {
+    const currentFeeCalculation =
+      await calculateFeeByHead({
+        studentId:
+          student.studentId,
+        feeHead: "ALL",
+      });
+
+    finalStudent =
+      await studentRepository
+        .updateDueFee(
+          updatedStudent._id,
+          Number(
+            currentFeeCalculation
+              .dueFee || 0
+          )
+        ) || updatedStudent;
+  } catch (error) {
+    dueFeeRefreshPending = true;
+  }
+
+  return {
+    student: {
+      studentId:
+        finalStudent.studentId,
+      name: finalStudent.name,
+      hasBusFacility: true,
+      busFee: finalBusFee,
+      busFacilityStartEffectiveFrom:
+        effectiveFrom,
+      dueFee:
+        Number(
+          finalStudent.dueFee || 0
+        ),
+    },
+    startType,
+    effectiveFrom,
+    daysInStartMonth,
+    chargeableDays,
+    calculatedFirstMonthBusFee:
+      firstMonthBusFee,
+    payableFirstMonthBusFee:
+      isStartMonthWaived
+        ? 0
+        : firstMonthBusFee,
+    isStartMonthWaived,
+    fullMonthlyFeeFrom,
+    fullMonthlyBusFee:
+      finalBusFee,
+    dueFeeRefreshPending,
+  };
+};
+
+const previewBusFacilityCashRefund =
+  async (
+    studentId,
+    body = {},
+    currentDate = new Date()
+  ) => {
+    const student =
+      await getActiveStudentByStudentId(
+        String(studentId || "")
+          .trim()
+      );
+
+    const currentBusFee =
+      Number(student.busFee || 0);
+
+    if (
+      student.hasBusFacility !==
+        true ||
+      !Number.isFinite(
+        currentBusFee
+      ) ||
+      currentBusFee <= 0
+    ) {
+      throw new Error(
+        "Student does not have an active bus facility"
+      );
+    }
+
+    const reason =
+      String(body.reason || "")
+        .trim();
+
+    if (
+      reason.length < 3 ||
+      reason.length > 250
+    ) {
+      throw new Error(
+        "Bus stop reason must contain 3 to 250 characters"
+      );
+    }
+
+    if (
+      body.refundMode !==
+        undefined &&
+      String(body.refundMode)
+        .trim()
+        .toUpperCase() !== "CASH"
+    ) {
+      throw new Error(
+        "Bus fee refund mode must be CASH"
+      );
+    }
+
+    const effectiveFrom =
+      normalizeBusStopEffectiveFrom(
+        body.effectiveFrom,
+        currentDate
+      );
+
+    const lastBusChargeDate =
+      new Date(
+        effectiveFrom.getTime() - 1
+      );
+
+    const feeStartDate =
+      new Date(
+        student.feeStartDate
+      );
+
+    if (
+      Number.isNaN(
+        feeStartDate.getTime()
+      )
+    ) {
+      throw new Error(
+        "Fee start date is not configured for this student"
+      );
+    }
+
+    const academicYearEnd =
+      getBusRefundAcademicYearEnd(
+        effectiveFrom
+      );
+
+    const waiverContext =
+      await getBusWaiverContext(
+        feeStartDate,
+        academicYearEnd
+      );
+
+    const usedBusCalculation =
+      calculateAccruedBusFee({
+        student,
+        feeStartDate,
+        currentDate:
+          lastBusChargeDate,
+        waivedMonths:
+          waiverContext.monthKeys,
+      });
+
+    const paymentHistory =
+      await feeRepository
+        .getFeeHistory(
+          student.studentId
+        );
+
+    const totalBusFeePaid =
+      getGrossPaidBusFee(
+        paymentHistory
+      );
+
+    const grossTotalFeePaid =
+      getGrossSuccessfulPaymentTotal(
+        paymentHistory
+      );
+
+    const previousBusRefunds =
+      getCompletedBusRefundTotal(
+        student
+      );
+
+    const netBusFeePaid =
+      Number(
+        Math.max(
+          totalBusFeePaid -
+          previousBusRefunds,
+          0
+        ).toFixed(2)
+      );
+
+    const netTotalFeePaid =
+      Number(
+        Math.max(
+          grossTotalFeePaid -
+          previousBusRefunds,
+          0
+        ).toFixed(2)
+      );
+
+    const usedBusFee =
+      Number(
+        usedBusCalculation.total
+          .toFixed(2)
+      );
+
+    const refundAmount =
+      Number(
+        Math.max(
+          netBusFeePaid -
+          usedBusFee,
+          0
+        ).toFixed(2)
+      );
+
+    const futureBusCalculation =
+      calculateAccruedBusFee({
+        student: {
+          hasBusFacility: true,
+          busFee: currentBusFee,
+          busFacilityHistory: [
+            {
+              busFee:
+                currentBusFee,
+              effectiveFrom,
+              effectiveTo:
+                academicYearEnd,
+              status: "ACTIVE",
+            },
+          ],
+        },
+        feeStartDate:
+          effectiveFrom,
+        currentDate:
+          academicYearEnd,
+        waivedMonths:
+          waiverContext.monthKeys,
+      });
+
+    let remainingRefund =
+      refundAmount;
+
+    const refundableMonthDetails = [];
+
+    for (
+      const detail of
+      futureBusCalculation.details
+    ) {
+      if (remainingRefund <= 0) {
+        break;
+      }
+
+      const month =
+        String(
+          detail.feeMonth ||
+          detail.month || ""
+        ).trim();
+
+      const monthBusFee =
+        Number(
+          detail.effectiveBusFee ||
+          0
+        );
+
+      const amount =
+        Math.min(
+          remainingRefund,
+          monthBusFee
+        );
+
+      if (amount <= 0) {
+        continue;
+      }
+
+      refundableMonthDetails.push({
+        month,
+        amount:
+          Number(amount.toFixed(2)),
+      });
+
+      remainingRefund =
+        Number(
+          Math.max(
+            remainingRefund -
+            amount,
+            0
+          ).toFixed(2)
+        );
+    }
+
+    return {
+      studentId:
+        student.studentId,
+      name: student.name,
+      hasBusFacility: true,
+      monthlyBusFee:
+        Number(
+          currentBusFee.toFixed(2)
+        ),
+      refundMode: "CASH",
+      effectiveFrom,
+      lastBusChargeDate,
+      lastBusChargeMonth:
+        getCalendarMonthKey(
+          lastBusChargeDate
+        ),
+      totalBusFeePaid,
+      grossTotalFeePaid,
+      previousBusRefunds,
+      netBusFeePaid,
+      netTotalFeePaid,
+      usedBusMonths:
+        usedBusCalculation
+          .accruedMonths,
+      usedBusFee,
+      refundAmount,
+      refundableMonths:
+        refundableMonthDetails
+          .map((detail) =>
+            detail.month
+          ),
+      refundableMonthDetails,
+      waivedBusFeeMonths:
+        waiverContext.waivers,
+      reason,
+    };
+  };
+
+const stopBusFacilityWithCashRefund =
+  async (
+    studentId,
+    body = {},
+    userId
+  ) => {
+    if (
+      body.confirmCashRefund !==
+        true &&
+      body.confirmCashRefund !==
+        "true"
+    ) {
+      throw new Error(
+        "Cash refund confirmation is required"
+      );
+    }
+
+    const preview =
+      await previewBusFacilityCashRefund(
+        studentId,
+        body
+      );
+
+    const student =
+      await getActiveStudentByStudentId(
+        preview.studentId
+      );
+
+    const receivedBy =
+      String(body.receivedBy || "")
+        .trim();
+
+    if (
+      preview.refundAmount > 0 &&
+      (
+        receivedBy.length < 2 ||
+        receivedBy.length > 100
+      )
+    ) {
+      throw new Error(
+        "Received by is required for CASH refund"
+      );
+    }
+
+    const cachedPaidFee =
+      Number(student.paidFee || 0);
+
+    const currentPaidFee =
+      preview.grossTotalFeePaid > 0
+        ? preview.netTotalFeePaid
+        : cachedPaidFee;
+
+    if (
+      preview.refundAmount >
+      currentPaidFee + 0.01
+    ) {
+      throw new Error(
+        "Bus refund amount cannot be greater than total paid fee"
+      );
+    }
+
+    const stoppedAt =
+      new Date();
+
+    const history =
+      (
+        Array.isArray(
+          student.busFacilityHistory
+        )
+          ? student
+            .busFacilityHistory
+          : []
+      ).map((period) =>
+        typeof period?.toObject ===
+          "function"
+          ? period.toObject()
+          : { ...period }
+      );
+
+    let activePeriodIndex = -1;
+
+    for (
+      let index =
+        history.length - 1;
+      index >= 0;
+      index -= 1
+    ) {
+      if (
+        !history[index]
+          .effectiveTo &&
+        String(
+          history[index].status ||
+          "ACTIVE"
+        )
+          .trim()
+          .toUpperCase() ===
+          "ACTIVE"
+      ) {
+        activePeriodIndex = index;
+        break;
+      }
+    }
+
+    const stoppedPeriodData = {
+      effectiveTo:
+        preview.lastBusChargeDate,
+      status: "STOPPED",
+      stopReason:
+        preview.reason,
+      stoppedBy: userId,
+      stoppedAt,
+    };
+
+    if (activePeriodIndex >= 0) {
+      history[activePeriodIndex] = {
+        ...history[
+          activePeriodIndex
+        ],
+        ...stoppedPeriodData,
+      };
+    } else {
+      history.push({
+        busFee:
+          preview.monthlyBusFee,
+        effectiveFrom:
+          student.feeStartDate,
+        startedBy:
+          student.createdBy || null,
+        startedAt:
+          student.createdAt ||
+          stoppedAt,
+        ...stoppedPeriodData,
+      });
+    }
+
+    let refund = null;
+
+    if (preview.refundAmount > 0) {
+      const refundNo =
+        await generateBusRefundNo();
+
+      refund = {
+        refundNo,
+        amount:
+          preview.refundAmount,
+        refundMode: "CASH",
+        status: "COMPLETED",
+        effectiveFrom:
+          preview.effectiveFrom,
+        lastBusChargeDate:
+          preview.lastBusChargeDate,
+        refundableMonths:
+          preview.refundableMonths,
+        refundableMonthDetails:
+          preview
+            .refundableMonthDetails,
+        reason: preview.reason,
+        receivedBy,
+        remarks:
+          String(
+            body.remarks || ""
+          ).trim(),
+        refundedBy: userId,
+        refundedAt: stoppedAt,
+      };
+    }
+
+    const newPaidFee =
+      Number(
+        Math.max(
+          currentPaidFee -
+          preview.refundAmount,
+          0
+        ).toFixed(2)
+      );
+
+    const updatedStudent =
+      await studentRepository
+        .stopBusFacility({
+          studentId:
+            student.studentId,
+          busFacilityHistory:
+            history,
+          busFacilityStopEffectiveFrom:
+            preview.effectiveFrom,
+          busFacilityStoppedAt:
+            stoppedAt,
+          busFacilityStoppedBy:
+            userId,
+          paidFee:
+            newPaidFee,
+          refund,
+        });
+
+    if (!updatedStudent) {
+      throw new Error(
+        "Bus facility is already stopped or was changed by another request"
+      );
+    }
+
+    let finalStudent =
+      updatedStudent;
+
+    let dueFeeRefreshPending =
+      false;
+
+    try {
+      const currentFeeCalculation =
+        await calculateFeeByHead({
+          studentId:
+            student.studentId,
+          feeHead: "ALL",
+        });
+
+      finalStudent =
+        await studentRepository
+          .updateDueFee(
+            updatedStudent._id,
+            Number(
+              currentFeeCalculation
+                .dueFee || 0
+            )
+          ) || updatedStudent;
+    } catch (error) {
+      dueFeeRefreshPending = true;
+    }
+
+    const savedRefund =
+      refund
+        ? finalStudent.busFeeRefunds[
+          finalStudent
+            .busFeeRefunds.length - 1
+        ]
+        : null;
+
+    return {
+      student: {
+        studentId:
+          finalStudent.studentId,
+        name: finalStudent.name,
+        hasBusFacility: false,
+        busFee: 0,
+        busFacilityStopEffectiveFrom:
+          preview.effectiveFrom,
+        paidFee:
+          Number(
+            finalStudent.paidFee || 0
+          ),
+        dueFee:
+          Number(
+            finalStudent.dueFee || 0
+          ),
+      },
+      refund:
+        savedRefund,
+      refundAmount:
+        preview.refundAmount,
+      refundMode: "CASH",
+      dueFeeRefreshPending,
+    };
+  };
+
+const getBusFeeRefundHistory =
+  async (studentId) => {
+    const student =
+      await studentRepository
+        .findByStudentId(
+          String(studentId || "")
+            .trim()
+        );
+
+    if (!student) {
+      throw new Error(
+        "Student not found"
+      );
+    }
+
+    const refunds =
+      (
+        Array.isArray(
+          student.busFeeRefunds
+        )
+          ? student.busFeeRefunds
+          : []
+      )
+        .map((refund) =>
+          typeof refund?.toObject ===
+            "function"
+            ? refund.toObject()
+            : { ...refund }
+        )
+        .sort(
+          (first, second) =>
+            new Date(
+              second.refundedAt
+            ) -
+            new Date(
+              first.refundedAt
+            )
+        );
+
+    return {
+      studentId:
+        student.studentId,
+      name: student.name,
+      totalRefunds:
+        refunds.length,
+      totalRefundedAmount:
+        Number(
+          refunds.reduce(
+            (total, refund) =>
+              total +
+              Number(
+                refund.amount || 0
+              ),
+            0
+          ).toFixed(2)
+        ),
+      refunds,
+    };
+  };
+
+const getBusFeeRefundReceipt =
+  async (identifier) => {
+    const receipt =
+      await studentRepository
+        .getBusRefundReceipt(
+          identifier
+        );
+
+    if (!receipt) {
+      throw new Error(
+        "Bus refund receipt not found"
+      );
+    }
+
+    return receipt;
+  };
+
+// =====================================================
 // Export
 // =====================================================
 
@@ -4813,4 +6189,14 @@ module.exports = {
   calculateCurrentDueFee,
 
   getCurrentDueFee,
+
+  startBusFacility,
+
+  previewBusFacilityCashRefund,
+
+  stopBusFacilityWithCashRefund,
+
+  getBusFeeRefundHistory,
+
+  getBusFeeRefundReceipt,
 };
