@@ -1200,6 +1200,777 @@ const getMonthKey = (dateValue) => {
 };
 
 // =====================================================
+// Normalize Requested MONTHLY / BUS Fee Months
+// =====================================================
+//
+// Request format:
+//
+// feeMonths: {
+//   MONTHLY: ["2026-04", "2026-05"],
+//   BUS: ["2026-04", "2026-05"]
+// }
+//
+// The field is optional for full backward compatibility.
+//
+// =====================================================
+
+const normalizeRequestedFeeMonths = (
+  feeMonths
+) => {
+  const normalized = {
+    MONTHLY: [],
+    BUS: [],
+  };
+
+  if (
+    feeMonths === undefined ||
+    feeMonths === null
+  ) {
+    return normalized;
+  }
+
+  if (
+    typeof feeMonths !==
+      "object" ||
+    Array.isArray(feeMonths)
+  ) {
+    throw new Error(
+      "Fee months must be an object"
+    );
+  }
+
+  for (
+    const [rawHead, rawMonths]
+    of Object.entries(feeMonths)
+  ) {
+    const head =
+      String(rawHead || "")
+        .trim()
+        .toUpperCase();
+
+    if (
+      !Object.prototype
+        .hasOwnProperty.call(
+          normalized,
+          head
+        )
+    ) {
+      throw new Error(
+        "Fee months are supported only for MONTHLY and BUS"
+      );
+    }
+
+    if (!Array.isArray(rawMonths)) {
+      throw new Error(
+        `${head} fee months must be an array`
+      );
+    }
+
+    const uniqueMonths =
+      new Set();
+
+    for (const rawMonth of rawMonths) {
+      const month =
+        String(rawMonth || "")
+          .trim();
+
+      if (
+        !MONTH_KEY_PATTERN.test(
+          month
+        )
+      ) {
+        throw new Error(
+          `${head} fee month must be in YYYY-MM format`
+        );
+      }
+
+      uniqueMonths.add(month);
+    }
+
+    if (uniqueMonths.size === 0) {
+      throw new Error(
+        `${head} fee months cannot be empty`
+      );
+    }
+
+    normalized[head] = [
+      ...new Set([
+        ...normalized[head],
+        ...uniqueMonths,
+      ]),
+    ].sort();
+  }
+
+  return normalized;
+};
+
+const getScheduleMonthKey = (
+  detail
+) => {
+  const month =
+    String(
+      detail?.feeMonth ||
+      detail?.month ||
+      ""
+    ).trim();
+
+  return MONTH_KEY_PATTERN.test(
+    month
+  )
+    ? month
+    : null;
+};
+
+const getScheduleMonthAmount = (
+  detail,
+  feeHead
+) => {
+  const amount =
+    feeHead === "BUS"
+      ? Number(
+        detail
+          ?.effectiveBusFee ||
+        detail?.busFee ||
+        0
+      )
+      : Number(
+        detail
+          ?.effectiveMonthlyFee ||
+        detail?.monthlyFee ||
+        0
+      );
+
+  return Number.isFinite(amount) &&
+    amount >= 0
+    ? Number(amount.toFixed(2))
+    : 0;
+};
+
+const getPaymentFeeHeadAmount = (
+  payment,
+  feeHead
+) => {
+  const feeBreakdown =
+    typeof payment?.feeBreakdown
+      ?.toObject === "function"
+      ? payment.feeBreakdown
+        .toObject()
+      : payment?.feeBreakdown;
+
+  let hasAllocatedBreakdown =
+    false;
+
+  if (
+    feeBreakdown &&
+    typeof feeBreakdown ===
+      "object"
+  ) {
+    hasAllocatedBreakdown =
+      Object.values(
+        feeBreakdown
+      ).some((value) => {
+        const amount =
+          Number(value || 0);
+
+        return (
+          Number.isFinite(amount) &&
+          amount > 0
+        );
+      });
+
+    if (hasAllocatedBreakdown) {
+      const amount =
+        Number(
+          feeBreakdown[feeHead] ||
+          0
+        );
+
+      return Number.isFinite(amount) &&
+        amount > 0
+        ? Number(amount.toFixed(2))
+        : 0;
+    }
+  }
+
+  const paymentFeeHead =
+    String(
+      payment?.feeHead || ""
+    )
+      .trim()
+      .toUpperCase();
+
+  if (paymentFeeHead !== feeHead) {
+    return 0;
+  }
+
+  const amount =
+    Number(payment?.amount || 0);
+
+  return Number.isFinite(amount) &&
+    amount > 0
+    ? Number(amount.toFixed(2))
+    : 0;
+};
+
+const getStoredFeeMonthAllocations = (
+  payment,
+  feeHead
+) => {
+  const rawAllocations =
+    Array.isArray(payment?.feeMonths)
+      ? payment.feeMonths
+      : [];
+
+  return rawAllocations
+    .map((rawEntry) => {
+      const entry =
+        typeof rawEntry?.toObject ===
+          "function"
+          ? rawEntry.toObject()
+          : rawEntry;
+
+      if (typeof entry === "string") {
+        const month = entry.trim();
+
+        return feeHead === "MONTHLY" &&
+          MONTH_KEY_PATTERN.test(month)
+          ? {
+            month,
+            amount: null,
+          }
+          : null;
+      }
+
+      if (
+        !entry ||
+        typeof entry !== "object"
+      ) {
+        return null;
+      }
+
+      const entryHead =
+        String(
+          entry.feeHead ||
+          "MONTHLY"
+        )
+          .trim()
+          .toUpperCase();
+
+      const month =
+        String(
+          entry.month || ""
+        ).trim();
+
+      if (
+        entryHead !== feeHead ||
+        !MONTH_KEY_PATTERN.test(month)
+      ) {
+        return null;
+      }
+
+      const amount = Number(
+        entry.amount ??
+        entry.monthlyPaid ??
+        entry.busPaid ??
+        Number.NaN
+      );
+
+      return {
+        month,
+        amount:
+          Number.isFinite(amount) &&
+          amount > 0
+            ? Number(
+              amount.toFixed(2)
+            )
+            : null,
+      };
+    })
+    .filter(Boolean);
+};
+
+const getPaidAmountByFeeMonth = ({
+  history = [],
+  feeHead,
+  schedule = [],
+  totalPaid = 0,
+  explicitlyPaidMonths = [],
+}) => {
+  const scheduleEntries =
+    (Array.isArray(schedule)
+      ? schedule
+      : []
+    )
+      .map((detail) => ({
+        month:
+          getScheduleMonthKey(
+            detail
+          ),
+        amount:
+          getScheduleMonthAmount(
+            detail,
+            feeHead
+          ),
+      }))
+      .filter(
+        (entry) =>
+          entry.month
+      )
+      .sort(
+        (first, second) =>
+          first.month.localeCompare(
+            second.month
+          )
+      );
+
+  const scheduleAmountByMonth =
+    new Map(
+      scheduleEntries.map(
+        (entry) => [
+          entry.month,
+          entry.amount,
+        ]
+      )
+    );
+
+  const paidAmountByMonth =
+    new Map(
+      scheduleEntries.map(
+        (entry) => [
+          entry.month,
+          0,
+        ]
+      )
+    );
+
+  const applyToOldestDue = (
+    rawAmount
+  ) => {
+    let remainingAmount =
+      Math.max(
+        Number(rawAmount || 0),
+        0
+      );
+
+    for (const entry of scheduleEntries) {
+      if (remainingAmount <= 0) {
+        break;
+      }
+
+      const alreadyPaid =
+        Number(
+          paidAmountByMonth.get(
+            entry.month
+          ) || 0
+        );
+
+      const monthDue =
+        Math.max(
+          entry.amount -
+          alreadyPaid,
+          0
+        );
+
+      const allocatedAmount =
+        Math.min(
+          remainingAmount,
+          monthDue
+        );
+
+      if (allocatedAmount <= 0) {
+        continue;
+      }
+
+      paidAmountByMonth.set(
+        entry.month,
+        Number(
+          (
+            alreadyPaid +
+            allocatedAmount
+          ).toFixed(2)
+        )
+      );
+
+      remainingAmount =
+        Number(
+          (
+            remainingAmount -
+            allocatedAmount
+          ).toFixed(2)
+        );
+    }
+  };
+
+  for (
+    const rawEntry of
+      explicitlyPaidMonths || []
+  ) {
+    const month =
+      typeof rawEntry === "string"
+        ? rawEntry.trim()
+        : String(
+          rawEntry?.month || ""
+        ).trim();
+
+    if (
+      scheduleAmountByMonth.has(
+        month
+      )
+    ) {
+      paidAmountByMonth.set(
+        month,
+        scheduleAmountByMonth.get(
+          month
+        )
+      );
+    }
+  }
+
+  const sortedHistory = [
+    ...(Array.isArray(history)
+      ? history
+      : []),
+  ].sort((first, second) => {
+    const firstDate =
+      new Date(
+        first?.paymentDate ||
+        first?.createdAt ||
+        0
+      ).getTime();
+
+    const secondDate =
+      new Date(
+        second?.paymentDate ||
+        second?.createdAt ||
+        0
+      ).getTime();
+
+    return firstDate - secondDate;
+  });
+
+  let historyHeadTotal = 0;
+
+  for (const payment of sortedHistory) {
+    if (
+      String(
+        payment?.paymentStatus ||
+        ""
+      )
+        .trim()
+        .toUpperCase() !==
+      "SUCCESS"
+    ) {
+      continue;
+    }
+
+    const headAmount =
+      getPaymentFeeHeadAmount(
+        payment,
+        feeHead
+      );
+
+    if (headAmount <= 0) {
+      continue;
+    }
+
+    historyHeadTotal += headAmount;
+
+    let remainingPaymentAmount =
+      headAmount;
+
+    const storedAllocations =
+      getStoredFeeMonthAllocations(
+        payment,
+        feeHead
+      );
+
+    for (
+      const allocation of
+        storedAllocations
+    ) {
+      if (
+        remainingPaymentAmount <= 0
+      ) {
+        break;
+      }
+
+      if (
+        !scheduleAmountByMonth.has(
+          allocation.month
+        )
+      ) {
+        continue;
+      }
+
+      const alreadyPaid =
+        Number(
+          paidAmountByMonth.get(
+            allocation.month
+          ) || 0
+        );
+
+      const monthDue =
+        Math.max(
+          Number(
+            scheduleAmountByMonth.get(
+              allocation.month
+            ) || 0
+          ) - alreadyPaid,
+          0
+        );
+
+      const requestedAmount =
+        allocation.amount === null
+          ? monthDue
+          : allocation.amount;
+
+      const allocatedAmount =
+        Math.min(
+          requestedAmount,
+          remainingPaymentAmount,
+          monthDue
+        );
+
+      if (allocatedAmount <= 0) {
+        continue;
+      }
+
+      paidAmountByMonth.set(
+        allocation.month,
+        Number(
+          (
+            alreadyPaid +
+            allocatedAmount
+          ).toFixed(2)
+        )
+      );
+
+      remainingPaymentAmount =
+        Number(
+          (
+            remainingPaymentAmount -
+            allocatedAmount
+          ).toFixed(2)
+        );
+    }
+
+    if (remainingPaymentAmount > 0) {
+      applyToOldestDue(
+        remainingPaymentAmount
+      );
+    }
+  }
+
+  const unrecordedPaidAmount =
+    Math.max(
+      Number(totalPaid || 0) -
+      historyHeadTotal,
+      0
+    );
+
+  if (unrecordedPaidAmount > 0) {
+    applyToOldestDue(
+      unrecordedPaidAmount
+    );
+  }
+
+  return paidAmountByMonth;
+};
+
+const buildSelectedFeeMonthAllocations =
+  async ({
+    student,
+    currentFeeCalculation,
+    feeMonths,
+    feeBreakdown,
+    paymentType,
+  }) => {
+    const requestedMonths =
+      normalizeRequestedFeeMonths(
+        feeMonths
+      );
+
+    const hasRequestedMonths =
+      requestedMonths.MONTHLY
+        .length > 0 ||
+      requestedMonths.BUS
+        .length > 0;
+
+    if (!hasRequestedMonths) {
+      return [];
+    }
+
+    if (paymentType !== "REGULAR") {
+      throw new Error(
+        "Fee months can be selected only for REGULAR payments"
+      );
+    }
+
+    const history =
+      await feeRepository.getFeeHistory(
+        student.studentId
+      );
+
+    const allocations = [];
+
+    for (
+      const feeHead of [
+        "MONTHLY",
+        "BUS",
+      ]
+    ) {
+      const selectedMonths =
+        requestedMonths[feeHead];
+
+      if (selectedMonths.length === 0) {
+        continue;
+      }
+
+      const paymentAmount =
+        Number(
+          feeBreakdown?.[feeHead] ||
+          0
+        );
+
+      if (
+        !Number.isFinite(
+          paymentAmount
+        ) ||
+        paymentAmount <= 0
+      ) {
+        throw new Error(
+          `${feeHead} amount must be greater than zero when its fee months are selected`
+        );
+      }
+
+      const schedule =
+        feeHead === "BUS"
+          ? currentFeeCalculation
+            .busDetails || []
+          : currentFeeCalculation
+            .monthlyDetails || [];
+
+      const scheduleAmountByMonth =
+        new Map(
+          schedule
+            .map((detail) => [
+              getScheduleMonthKey(
+                detail
+              ),
+              getScheduleMonthAmount(
+                detail,
+                feeHead
+              ),
+            ])
+            .filter(
+              ([month]) => month
+            )
+        );
+
+      const paidAmountByMonth =
+        getPaidAmountByFeeMonth({
+          history,
+          feeHead,
+          schedule,
+          totalPaid:
+            currentFeeCalculation
+              .paidBreakdown
+              ?.[feeHead] || 0,
+          explicitlyPaidMonths:
+            feeHead === "MONTHLY"
+              ? student.paidFeeMonths ||
+                []
+              : [],
+        });
+
+      let remainingPaymentAmount =
+        Number(
+          paymentAmount.toFixed(2)
+        );
+
+      let selectedMonthsDue = 0;
+
+      for (const month of selectedMonths) {
+        if (
+          !scheduleAmountByMonth.has(
+            month
+          )
+        ) {
+          throw new Error(
+            `${feeHead} fee is not chargeable for ${month}`
+          );
+        }
+
+        const monthFee =
+          Number(
+            scheduleAmountByMonth.get(
+              month
+            ) || 0
+          );
+
+        const alreadyPaid =
+          Number(
+            paidAmountByMonth.get(
+              month
+            ) || 0
+          );
+
+        const monthDue =
+          Math.max(
+            monthFee -
+            alreadyPaid,
+            0
+          );
+
+        if (monthDue <= 0) {
+          throw new Error(
+            `${feeHead} fee for ${month} is already fully paid`
+          );
+        }
+
+        selectedMonthsDue +=
+          monthDue;
+
+        const allocatedAmount =
+          Math.min(
+            remainingPaymentAmount,
+            monthDue
+          );
+
+        if (allocatedAmount > 0) {
+          allocations.push({
+            feeHead,
+            month,
+            amount:
+              Number(
+                allocatedAmount
+                  .toFixed(2)
+              ),
+          });
+
+          remainingPaymentAmount =
+            Number(
+              (
+                remainingPaymentAmount -
+                allocatedAmount
+              ).toFixed(2)
+            );
+        }
+      }
+
+      if (remainingPaymentAmount > 0.01) {
+        throw new Error(
+          `${feeHead} selected months due is Rs.${Number(
+            selectedMonthsDue.toFixed(2)
+          )}, which is less than the allocated amount Rs.${paymentAmount}`
+        );
+      }
+    }
+
+    return allocations;
+  };
+
+// =====================================================
 // Get Active Global Monthly Fee Waivers
 // =====================================================
 
@@ -1513,58 +2284,30 @@ const getPaidFeeMonths = ({
   feeStartDate,
   monthlyDetails = [],
 }) => {
-  const effectiveMonthlyFee =
-    getNormalMonthlyFee(
-      student
-    );
+  const schedule =
+    Array.isArray(monthlyDetails)
+      ? monthlyDetails
+      : [];
 
-  const monthlyFeeByMonth =
-    new Map(
-      (Array.isArray(
-        monthlyDetails
-      )
-        ? monthlyDetails
-        : []
-      )
-        .map((detail) => [
-          String(
-            detail?.month || ""
-          ).trim(),
-          Number(
-            detail
-              ?.effectiveMonthlyFee ||
-            0
-          ),
-        ])
-        .filter(
-          ([month, amount]) =>
-            MONTH_KEY_PATTERN.test(
-              month
-            ) &&
-            Number.isFinite(
-              amount
-            ) &&
-            amount >= 0
-        )
-    );
-
-  const explicitEntries = [];
+  const legacyExplicitMonths = [];
 
   if (
     Array.isArray(
       student.paidFeeMonths
     )
   ) {
-    explicitEntries.push(
+    legacyExplicitMonths.push(
       ...student.paidFeeMonths
     );
   }
 
-  for (
-    const fee of history || []
-  ) {
+  for (const fee of history || []) {
     if (
-      fee.paymentStatus !==
+      String(
+        fee?.paymentStatus || ""
+      )
+        .trim()
+        .toUpperCase() !==
       "SUCCESS"
     ) {
       continue;
@@ -1575,169 +2318,78 @@ const getPaidFeeMonths = ({
         fee.paidFeeMonths
       )
     ) {
-      explicitEntries.push(
+      legacyExplicitMonths.push(
         ...fee.paidFeeMonths
       );
     }
-
-    if (
-      Array.isArray(
-        fee.feeMonths
-      )
-    ) {
-      explicitEntries.push(
-        ...fee.feeMonths
-      );
-    }
   }
 
-  const explicitMonths =
-    new Set(
-      explicitEntries
-        .map(
-          (entry) => {
-            const entryMonth =
-              typeof entry ===
-              "string"
-                ? entry.trim()
-                : String(
-                  entry?.month ||
-                  ""
-                ).trim();
+  if (schedule.length > 0) {
+    const paidAmountByMonth =
+      getPaidAmountByFeeMonth({
+        history,
+        feeHead: "MONTHLY",
+        schedule,
+        totalPaid: monthlyPaid,
+        explicitlyPaidMonths:
+          legacyExplicitMonths,
+      });
 
-            const monthFee =
-              monthlyFeeByMonth.has(
-                entryMonth
-              )
-                ? monthlyFeeByMonth.get(
-                  entryMonth
-                )
-                : effectiveMonthlyFee;
-
-            return normalizePaidMonthEntry(
-              entry,
-              monthFee
-            );
-          }
-        )
-        .filter(Boolean)
-    );
-
-  if (
-    explicitMonths.size > 0
-  ) {
-    return [
-      ...explicitMonths,
-    ].sort();
-  }
-
-  const paidAmount = Number(
-    monthlyPaid || 0
-  );
-
-  if (
-    !Number.isFinite(
-      paidAmount
-    ) ||
-    paidAmount <= 0
-  ) {
-    return [];
-  }
-
-  const promotionAwareSchedule =
-    (Array.isArray(
-      monthlyDetails
-    )
-      ? monthlyDetails
-      : []
-    )
+    return schedule
       .map((detail) => ({
         month:
-          String(
-            detail?.month || ""
-          ).trim(),
-
-        effectiveMonthlyFee:
-          Number(
+          getScheduleMonthKey(
             detail
-              ?.effectiveMonthlyFee ||
-            0
+          ),
+        monthFee:
+          getScheduleMonthAmount(
+            detail,
+            "MONTHLY"
           ),
       }))
-      .filter(
-        (detail) =>
-          MONTH_KEY_PATTERN.test(
-            detail.month
-          ) &&
-          Number.isFinite(
-            detail
-              .effectiveMonthlyFee
-          ) &&
-          detail
-            .effectiveMonthlyFee >= 0
-      );
+      .filter((detail) => {
+        if (!detail.month) {
+          return false;
+        }
 
-  if (
-    promotionAwareSchedule.length > 0
-  ) {
-    let remainingPaidAmount =
-      paidAmount;
+        const paidAmount =
+          Number(
+            paidAmountByMonth.get(
+              detail.month
+            ) || 0
+          );
 
-    const paidMonths = [];
-
-    for (
-      const detail of
-      promotionAwareSchedule
-    ) {
-      const monthFee =
-        detail
-          .effectiveMonthlyFee;
-
-      if (monthFee <= 0) {
-        paidMonths.push(
-          detail.month
+        return (
+          detail.monthFee <= 0 ||
+          paidAmount + 0.001 >=
+            detail.monthFee
         );
-
-        continue;
-      }
-
-      if (
-        remainingPaidAmount +
-        0.001 <
-        monthFee
-      ) {
-        break;
-      }
-
-      remainingPaidAmount =
-        Math.max(
-          remainingPaidAmount -
-          monthFee,
-          0
-        );
-
-      paidMonths.push(
-        detail.month
-      );
-    }
-
-    return paidMonths;
+      })
+      .map(
+        (detail) => detail.month
+      )
+      .sort();
   }
 
+  // Legacy fallback for records without a generated
+  // monthly schedule.
+  const effectiveMonthlyFee =
+    getNormalMonthlyFee(student);
+
+  const paidAmount =
+    Number(monthlyPaid || 0);
+
   if (
+    !Number.isFinite(paidAmount) ||
+    paidAmount <= 0 ||
     effectiveMonthlyFee <= 0
   ) {
     return [];
   }
 
-  // A partially paid month is intentionally not
-  // treated as a fully paid month.
   const fullyPaidMonthCount =
     Math.floor(
-      (
-        paidAmount +
-        0.001
-      ) /
+      (paidAmount + 0.001) /
       effectiveMonthlyFee
     );
 
@@ -1748,14 +2400,12 @@ const getPaidFeeMonths = ({
       1
     );
 
-  const paidMonths = [];
-
-  for (
-    let index = 0;
-    index < fullyPaidMonthCount;
-    index += 1
-  ) {
-    paidMonths.push(
+  return Array.from(
+    {
+      length:
+        fullyPaidMonthCount,
+    },
+    (_, index) =>
       getMonthKey(
         new Date(
           firstMonth.getFullYear(),
@@ -1764,10 +2414,7 @@ const getPaidFeeMonths = ({
           1
         )
       )
-    );
-  }
-
-  return paidMonths.filter(Boolean);
+  ).filter(Boolean);
 };
 
 const getLateFeeSummary = ({
@@ -2651,6 +3298,54 @@ const calculateFeeByHead = async ({
       monthlyDetails,
     });
 
+  const paidBusAmountByMonth =
+    getPaidAmountByFeeMonth({
+      history,
+      feeHead: "BUS",
+      schedule: busDetails,
+      totalPaid:
+        paid.BUS,
+    });
+
+  const paidBusFeeMonths =
+    (Array.isArray(busDetails)
+      ? busDetails
+      : []
+    )
+      .map((detail) => ({
+        month:
+          getScheduleMonthKey(
+            detail
+          ),
+        monthFee:
+          getScheduleMonthAmount(
+            detail,
+            "BUS"
+          ),
+      }))
+      .filter((detail) => {
+        if (!detail.month) {
+          return false;
+        }
+
+        const paidAmount =
+          Number(
+            paidBusAmountByMonth.get(
+              detail.month
+            ) || 0
+          );
+
+        return (
+          detail.monthFee <= 0 ||
+          paidAmount + 0.001 >=
+            detail.monthFee
+        );
+      })
+      .map(
+        (detail) => detail.month
+      )
+      .sort();
+
   const lateFeeSummary =
     activeLumpSum
       ? {
@@ -2991,6 +3686,8 @@ const calculateFeeByHead = async ({
       totalPaid,
 
     paidFeeMonths,
+
+    paidBusFeeMonths,
 
     lateFee:
       includeLateFee
@@ -3966,6 +4663,7 @@ const buildFeePaymentData = ({
   collectedBy,
   lumpSumDetails,
   feeBreakdown,
+  feeMonths,
 }) => {
   const isLumpSum =
     paymentType === "LUMP_SUM";
@@ -3995,6 +4693,11 @@ const buildFeePaymentData = ({
         LATE_FEE: 0,
         OPENING_DUE: 0,
       },
+
+    feeMonths:
+      Array.isArray(feeMonths)
+        ? feeMonths
+        : [],
 
     paymentType,
 
@@ -4303,6 +5006,7 @@ const collectFee = async (
     remarks,
     isLumpSum,
     feeBreakdown,
+    feeMonths,
   } = body;
 
   // ===================================================
@@ -4819,6 +5523,21 @@ const collectFee = async (
   }
 
   // ===================================================
+  // Optional MONTHLY / BUS Month-wise Allocations
+  // ===================================================
+
+  const feeMonthAllocations =
+    await buildSelectedFeeMonthAllocations({
+      student,
+      currentFeeCalculation,
+      feeMonths,
+      feeBreakdown:
+        normalizedFeeBreakdown,
+      paymentType:
+        finalPaymentType,
+    });
+
+  // ===================================================
   // Effective Fee Head Amount
   // ===================================================
 
@@ -4904,6 +5623,9 @@ const collectFee = async (
 
       feeBreakdown:
         normalizedFeeBreakdown,
+
+      feeMonths:
+        feeMonthAllocations,
     });
 
   // ===================================================
@@ -4974,6 +5696,9 @@ const collectFee = async (
 
       feeBreakdown:
         normalizedFeeBreakdown,
+
+      feeMonths:
+        feeMonthAllocations,
 
       lumpSumDetails:
         finalPaymentType ===
@@ -5565,6 +6290,7 @@ const createOnlineQR = async (
     paymentType,
     isLumpSum,
     feeBreakdown,
+    feeMonths,
   } = body;
 
   // ===================================================
@@ -5876,6 +6602,21 @@ const createOnlineQR = async (
   }
 
   // ===================================================
+  // Optional MONTHLY / BUS Month-wise Allocations
+  // ===================================================
+
+  const feeMonthAllocations =
+    await buildSelectedFeeMonthAllocations({
+      student,
+      currentFeeCalculation,
+      feeMonths,
+      feeBreakdown:
+        normalizedFeeBreakdown,
+      paymentType:
+        finalPaymentType,
+    });
+
+  // ===================================================
   // Effective Fee Head
   // ===================================================
 
@@ -5996,6 +6737,9 @@ const createOnlineQR = async (
 
         paymentType:
           finalPaymentType,
+
+        feeMonths:
+          feeMonthAllocations,
       });
 
   // ===================================================
@@ -6036,6 +6780,9 @@ const createOnlineQR = async (
 
     feeBreakdown:
       normalizedFeeBreakdown,
+
+    feeMonths:
+      feeMonthAllocations,
 
     lumpSumDetails:
       finalPaymentType ===
@@ -6152,6 +6899,10 @@ const checkOnlinePayment =
 
         amount:
           pendingPayment.amount,
+
+        feeMonths:
+          pendingPayment.feeMonths ||
+          [],
 
         paymentType:
           pendingPayment.paymentType ||
@@ -6619,6 +7370,10 @@ const checkOnlinePayment =
 
         feeBreakdown:
           paymentFeeBreakdown,
+
+        feeMonths:
+          pendingPayment.feeMonths ||
+          [],
       });
 
     const fee =
@@ -6845,6 +7600,12 @@ module.exports = {
   validateFeeDiscountType,
 
   validateAmount,
+
+  normalizeRequestedFeeMonths,
+
+  getPaidAmountByFeeMonth,
+
+  buildSelectedFeeMonthAllocations,
 
   validateDueAmount,
 
