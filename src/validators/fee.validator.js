@@ -49,6 +49,131 @@ const validateFeeHead = body("feeHead")
   .withMessage("Invalid fee head");
 
 // =====================================================
+// Online Fee Head Validation
+// =====================================================
+//
+// Online regular payments accept the same cash-style
+// multi-head allocation through feeBreakdown. Frontends
+// may send either "ALL" or an array of selected heads.
+// An array is safely normalized to "ALL" before the
+// request reaches the service.
+//
+// =====================================================
+
+const validateOnlineFeeHead = body("feeHead")
+  .notEmpty()
+  .withMessage("Fee head is required")
+  .custom((value) => {
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        throw new Error(
+          "At least one fee head is required"
+        );
+      }
+
+      for (const feeHead of value) {
+        if (typeof feeHead !== "string") {
+          throw new Error(
+            "Each fee head must be a string"
+          );
+        }
+
+        const normalizedFeeHead =
+          feeHead.trim().toUpperCase();
+
+        if (
+          !ALLOWED_FEE_HEADS.includes(
+            normalizedFeeHead
+          ) ||
+          normalizedFeeHead === "ALL"
+        ) {
+          throw new Error(
+            "Invalid fee head"
+          );
+        }
+      }
+
+      return true;
+    }
+
+    if (typeof value !== "string") {
+      throw new Error(
+        "Fee head must be a string or an array"
+      );
+    }
+
+    return true;
+  })
+  .customSanitizer((value) => {
+    if (Array.isArray(value)) {
+      return "ALL";
+    }
+
+    return typeof value === "string"
+      ? value.trim().toUpperCase()
+      : value;
+  })
+  .isIn(ALLOWED_FEE_HEADS)
+  .withMessage("Invalid fee head");
+
+// =====================================================
+// Optional MONTHLY / BUS Fee Months Validation
+// =====================================================
+//
+// The frontend sends only month and year in YYYY-MM
+// format. Existing clients may omit feeMonths and keep
+// using the previous oldest-due-first behavior.
+//
+// =====================================================
+
+const validateFeeMonths = [
+  body("feeMonths")
+    .optional()
+    .isObject()
+    .withMessage(
+      "Fee months must be an object"
+    ),
+
+  body("feeMonths.MONTHLY")
+    .optional()
+    .isArray({ min: 1 })
+    .withMessage(
+      "MONTHLY fee months must be a non-empty array"
+    ),
+
+  body("feeMonths.MONTHLY.*")
+    .optional()
+    .isString()
+    .withMessage(
+      "Each MONTHLY fee month must be a string"
+    )
+    .trim()
+    .matches(/^\d{4}-(0[1-9]|1[0-2])$/)
+    .withMessage(
+      "Each MONTHLY fee month must be in YYYY-MM format"
+    ),
+
+  body("feeMonths.BUS")
+    .optional()
+    .isArray({ min: 1 })
+    .withMessage(
+      "BUS fee months must be a non-empty array"
+    ),
+
+  body("feeMonths.BUS.*")
+    .optional()
+    .isString()
+    .withMessage(
+      "Each BUS fee month must be a string"
+    )
+    .trim()
+    .matches(/^\d{4}-(0[1-9]|1[0-2])$/)
+    .withMessage(
+      "Each BUS fee month must be in YYYY-MM format"
+    ),
+];
+
+// =====================================================
 // Collect CASH Fee Validation
 // =====================================================
 
@@ -98,6 +223,8 @@ const collectFeeValidation = [
     .withMessage(
       "Remarks must be a string"
     ),
+
+  ...validateFeeMonths,
 ];
 
 // =====================================================
@@ -110,7 +237,7 @@ const onlineQRValidation = [
     .notEmpty()
     .withMessage("Student ID is required"),
 
-  validateFeeHead,
+  validateOnlineFeeHead,
 
   body("amount")
     .isFloat({ gt: 0 })
@@ -124,6 +251,8 @@ const onlineQRValidation = [
     })
     .isIn(ALLOWED_PAYMENT_TYPES)
     .withMessage("Invalid payment type"),
+
+  ...validateFeeMonths,
 ];
 
 // =====================================================
