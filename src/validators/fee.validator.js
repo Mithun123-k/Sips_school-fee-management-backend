@@ -49,63 +49,6 @@ const validateFeeHead = body("feeHead")
   .withMessage("Invalid fee head");
 
 // =====================================================
-// Optional MONTHLY / BUS Fee Months Validation
-// =====================================================
-//
-// The frontend sends only month and year in YYYY-MM
-// format. Existing clients may omit feeMonths and keep
-// using the previous oldest-due-first behavior.
-//
-// =====================================================
-
-const validateFeeMonths = [
-  body("feeMonths")
-    .optional()
-    .isObject()
-    .withMessage(
-      "Fee months must be an object"
-    ),
-
-  body("feeMonths.MONTHLY")
-    .optional()
-    .isArray({ min: 1 })
-    .withMessage(
-      "MONTHLY fee months must be a non-empty array"
-    ),
-
-  body("feeMonths.MONTHLY.*")
-    .optional()
-    .isString()
-    .withMessage(
-      "Each MONTHLY fee month must be a string"
-    )
-    .trim()
-    .matches(/^\d{4}-(0[1-9]|1[0-2])$/)
-    .withMessage(
-      "Each MONTHLY fee month must be in YYYY-MM format"
-    ),
-
-  body("feeMonths.BUS")
-    .optional()
-    .isArray({ min: 1 })
-    .withMessage(
-      "BUS fee months must be a non-empty array"
-    ),
-
-  body("feeMonths.BUS.*")
-    .optional()
-    .isString()
-    .withMessage(
-      "Each BUS fee month must be a string"
-    )
-    .trim()
-    .matches(/^\d{4}-(0[1-9]|1[0-2])$/)
-    .withMessage(
-      "Each BUS fee month must be in YYYY-MM format"
-    ),
-];
-
-// =====================================================
 // Collect CASH Fee Validation
 // =====================================================
 
@@ -155,8 +98,6 @@ const collectFeeValidation = [
     .withMessage(
       "Remarks must be a string"
     ),
-
-  ...validateFeeMonths,
 ];
 
 // =====================================================
@@ -183,8 +124,6 @@ const onlineQRValidation = [
     })
     .isIn(ALLOWED_PAYMENT_TYPES)
     .withMessage("Invalid payment type"),
-
-  ...validateFeeMonths,
 ];
 
 // =====================================================

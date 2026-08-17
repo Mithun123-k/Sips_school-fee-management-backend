@@ -40,42 +40,6 @@ const ALLOWED_FEE_DISCOUNT_TYPES = [
 ];
 
 // =====================================================
-// MONTHLY / BUS Month Allocation Schema
-// =====================================================
-
-const feeMonthAllocationSchema =
-  new mongoose.Schema(
-    {
-      feeHead: {
-        type: String,
-        enum: [
-          "MONTHLY",
-          "BUS",
-        ],
-        required: true,
-      },
-
-      month: {
-        type: String,
-        required: true,
-        trim: true,
-        match:
-          /^\d{4}-(0[1-9]|1[0-2])$/,
-      },
-
-      amount: {
-        type: Number,
-        required: true,
-        min: 0.01,
-      },
-    },
-    {
-      _id: false,
-    }
-  );
-
-// =====================================================
-// =====================================================
 // Pending Online Payment Schema
 // =====================================================
 
@@ -198,17 +162,6 @@ const pendingOnlinePaymentSchema =
           default: 0,
           min: 0,
         },
-      },
-
-      // ================================================
-      // MONTHLY / BUS Month-wise Allocations
-      // ================================================
-
-      feeMonths: {
-        type: [
-          feeMonthAllocationSchema,
-        ],
-        default: [],
       },
 
       // ================================================
