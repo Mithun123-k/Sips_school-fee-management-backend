@@ -189,12 +189,12 @@ router.get(
 router.get(
   "/history/:studentId",
 
-  auth,
+  // auth,
 
-  authorize(
-    "ADMIN",
-    "RECEPTIONIST"
-  ),
+  // authorize(
+  //   "ADMIN",
+  //   "RECEPTIONIST"
+  // ),
 
   feeController.getFeeHistory
 );

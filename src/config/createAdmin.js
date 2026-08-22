@@ -14,8 +14,8 @@ const createDefaultAdmin = async () => {
 
     await userRepository.createUser({
       name: "Super Admin",
-      email: "admin@gmail.com",
-      mobile: "9999999999",
+      email: "SIPSNARSINGHPUR@GMAIL.COM",
+      mobile: "8839194116",
       password,
       role: "ADMIN",
     });
